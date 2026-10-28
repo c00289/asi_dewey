@@ -104,18 +104,16 @@ def test_reopen_keeps_data_and_migrates(tmp_path):
         assert b.migration["created"] == []
 
 
-def test_load_config_reads_the_jira_live_keys(tmp_path):
+def test_load_config_reads_jira_live_jql_and_ignores_the_retired_autofetch_key(tmp_path):
     from asi_dewey.brain import load_config
 
     config = tmp_path / "dewey.toml"
-    config.write_text('jira_live_jql = " project = HWL "\njira_live_autofetch = false\n', encoding="utf-8")
+    config.write_text('jira_live_jql = " project = HWL "\njira_live_autofetch = true\n', encoding="utf-8")
     loaded = load_config(config)
-    assert loaded["jira_live_jql"] == "project = HWL" and loaded["jira_live_autofetch"] is False
-    config.write_text('jira_live_autofetch = "false"\n', encoding="utf-8")  # a string is not a boolean: ignored
-    loaded = load_config(config)
-    assert "jira_live_autofetch" not in loaded and "jira_live_jql" not in loaded
-    config.write_text("jira_live_autofetch = true\n", encoding="utf-8")
-    assert load_config(config)["jira_live_autofetch"] is True
+    assert loaded["jira_live_jql"] == "project = HWL"
+    assert "jira_live_autofetch" not in loaded  # the key of 0.7.3 to 0.8.0 is ignored: its window is gone (0.8.1)
+    config.write_text("jira_jql = 'project = HWL'\n", encoding="utf-8")
+    assert "jira_live_jql" not in load_config(config)
 
 
 # -- the hidden identity (0.8.0, docs/hidden-identity-plan.md) ---------------------------------

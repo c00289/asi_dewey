@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import gc
-import threading
 import time
 import tkinter as tk
 from tkinter import ttk
@@ -42,7 +41,7 @@ def window(seeded):
 def test_navigation_and_dashboard(window):
     keys = [k for k, _ in window.factory.items()]
     assert keys == [
-        "dashboard", "jira_live", "entity:task", "entity:fact", "entity:machine_function", "entity:use_case",
+        "dashboard", "entity:task", "entity:fact", "entity:machine_function", "entity:use_case",
         "entity:link", "entity:qms_document", "entity:person", "transfer", "generate",
     ]
     assert window.current.key == "dashboard"
@@ -107,7 +106,7 @@ def test_pruned_screens_are_absent(window, seeded):
     keys = [k for k, _ in window.factory.items()]
     for key in ("entity:jira_ticket", "entity:safety_plan_row", "safety_plan_matrix"):
         assert key not in keys and key not in window.factory
-    assert len(keys) == 11  # ten after the prune, plus JIRA Live Data (0.5.0)
+    assert len(keys) == 10  # ten after the prune; JIRA Live Data came in 0.5.0 and went in 0.8.1
     with pytest.raises(NotFound):
         window.show("safety_plan_matrix")
     with pytest.raises(NotFound):
@@ -125,20 +124,20 @@ def test_pruned_screens_are_absent(window, seeded):
     last = view_menu.index("end")
     assert view_menu.type(last) == "cascade" and view_menu.entrycget(last, "label") == "Theme"
     # the navigation list follows the factory too
-    assert window.nav.size() == 11
+    assert window.nav.size() == 10
     rows = [row.strip() for row in window.nav.get(0, "end")]
     assert "JIRA" not in rows and not any(row.startswith("SAFETY PLAN") for row in rows)
     # the entities stay: tables, commands and counts are untouched
     assert "jira_ticket" in seeded.registry and "safety_plan_row" in seeded.registry
     assert len(seeded.registry) == 9
     assert seeded.execute("count", entity="safety_plan_row").data["count"] == 1
-    # the dashboard still counts both; the Safety Plan tile is not clickable, the Jira one opens the live view
+    # the dashboard still counts both; neither tile is clickable: no screen opens for a hidden entity
     dash = window.current
     assert dash._tile_vars["safety_plan_row"].get() == "1" and dash._tile_vars["jira_ticket"].get() == "0"
     names = list(dash._tile_vars)
     tiles = dash.tiles.winfo_children()
     assert tiles[names.index("safety_plan_row")].bind("<Button-1>") == ""
-    assert tiles[names.index("jira_ticket")].bind("<Button-1>") != ""  # TILE_TARGETS: jira_live (0.5.0)
+    assert tiles[names.index("jira_ticket")].bind("<Button-1>") == ""  # it opened the live view until 0.8.1
     assert tiles[names.index("fact")].bind("<Button-1>") != ""
 
 
@@ -148,7 +147,7 @@ def test_hidden_set_must_name_registered_entities(seeded):
     with pytest.raises(ValueError):
         build_default_screens(seeded, hidden=frozenset({"unicorn"}))
     keys = [k for k, _ in build_default_screens(seeded, hidden=frozenset()).items()]
-    assert len(keys) == 13 and "entity:jira_ticket" in keys and "entity:safety_plan_row" in keys
+    assert len(keys) == 12 and "entity:jira_ticket" in keys and "entity:safety_plan_row" in keys
 
 
 def test_event_bus_refreshes_open_screen(window, seeded):
@@ -517,328 +516,7 @@ def fit_geometry_for(window):
 
 
 
-# -- JIRA Live Data (0.5.0): filled from a stubbed execute_quiet, no gateway, no network ---------
-# Since 0.7.3 the verb runs on a worker thread, so every fetch is followed by ``wait_fetch()``,
-# which pumps the Tk loop until the Result has been applied, and the stub never touches a widget.
-def _issue(key, summary, issue_type, status, category, priority, assignee, due, labels=(), parent=None, res=None):
-    number = key.split("-")[1]
-    return {
-        "key": key, "issue_type": issue_type, "summary": summary, "status": status, "status_category": category,
-        "resolution": res, "priority": priority, "assignee": assignee, "reporter": "Bob", "labels": list(labels),
-        "components": [], "parent_key": parent, "created": f"2026-10-0{number[-1]}T09:12:40.000-0600",
-        "updated": "2026-10-27T11:18:59.416-0600", "due": due, "url": f"https://x.atlassian.net/browse/{key}",
-    }
-
-
-SAMPLE = {
-    "jql": "project = HWL AND assignee = currentUser() ORDER BY updated DESC",
-    "fetched_at": "2026-10-27T18:04:11+00:00", "count": 5,
-    "truncated": False,
-    "issues": [
-        _issue("HWL-9", "Brake test on the loader", "Story", "In Progress", "indeterminate", "High", "Ada",
-               "2026-11-01", labels=("safety", "VAT"), parent="HWL-1"),
-        _issue("HWL-10", "E-stop latency", "Bug", "To Do", "new", "Low", "Ada", "2026-11-05"),
-        _issue("HWL-100", "Hazard log review", "Story", "Done", "done", "High", "Cy", "2026-10-01", res="Done"),
-        _issue("HWL-2", "Old defect", "Bug", "Done", "done", "Low", "Cy", "2026-09-01", res="Fixed"),
-        _issue("HWL-33", "Unassigned work", "Story", "In Progress", "indeterminate", "High", None, None),
-    ],
-}
-COMMENTS = {
-    "key": "HWL-9", "summary": "Brake test on the loader", "url": "https://x.atlassian.net/browse/HWL-9",
-    "status": "In Progress", "fetched_at": "2026-10-27T18:04:11+00:00", "count": 3,
-    "comments": [
-        {"id": "c3", "author": "Ada", "created": "2026-10-26T15:02:11.000-0600",
-         "updated": "2026-10-26T15:40:00.000-0600", "body": "Reviewed the loss list; L3 needs work."},
-        {"id": "c2", "author": "Bob", "created": "2026-10-24T09:00:00.000-0600",
-         "updated": "2026-10-24T09:00:00.000-0600", "body": "Draft attached.\nSee the sheet."},
-        {"id": "c1", "author": "Cy", "created": "2026-10-21T09:12:40.000-0600",
-         "updated": "2026-10-21T09:12:40.000-0600", "body": "Opened."},
-    ],
-}
-NO_SESSION = "no Atlassian session for this account; run `asi-hopper auth login` once"
-
-
-class FakeExecuteQuiet:
-    """Stands in for ``MainWindow.execute_quiet``: counts calls per action and records the calling thread.
-
-    It runs on the screen's worker thread, so it touches no widget; the status bar is the real
-    ``report_quiet``'s job. ``gate``, when set, holds every call until the test opens it, so a
-    fetch can be observed in flight.
-    """
-
-    def __init__(self, window) -> None:
-        self.window = window
-        self.calls = {"live": 0, "comments": 0}
-        self.fail: str | None = None
-        self.gate: threading.Event | None = None
-        self.threads: list[threading.Thread] = []
-
-    def __call__(self, verb, **args):
-        from asi_dewey.commands import Result
-
-        assert verb == "jira"
-        action = args["action"]
-        self.calls[action] += 1
-        self.threads.append(threading.current_thread())
-        if self.gate is not None:
-            self.gate.wait(5.0)
-        if self.fail:
-            return Result.failure(self.fail)
-        if action == "live":
-            return Result.success(SAMPLE)
-        key = args["key"]
-        if key == "HWL-9":
-            return Result.success(COMMENTS)
-        return Result.success({**COMMENTS, "key": key, "summary": "other", "count": 0, "comments": []})
-
-
-@pytest.fixture
-def stub(window, monkeypatch):
-    fake = FakeExecuteQuiet(window)
-    monkeypatch.setattr(window, "execute_quiet", fake)
-    return fake
-
-
-def _fetched(window):
-    """The live screen shown and fetched once through the stub, the Result applied."""
-    screen = window.show("jira_live")
-    screen.fetch()
-    assert screen.wait_fetch().ok
-    return screen
-
-
-def _settled(window, seconds: float = 0.1) -> None:
-    """Pump the Tk loop for a while so any poll still pending has had its chance to fire."""
-    deadline = time.monotonic() + seconds
-    while time.monotonic() < deadline:
-        window.update()
-        time.sleep(0.01)
-
-
-def _view_labels(window):
-    menubar = window.nametowidget(window.cget("menu"))
-    tops = [i for i in range(menubar.index("end") + 1) if menubar.type(i) == "cascade"]
-    view_menu = window.nametowidget(menubar.entrycget(tops[1], "menu"))
-    entries = range(view_menu.index("end") + 1)
-    return [view_menu.entrycget(i, "label") for i in entries if view_menu.type(i) == "command"]
-
-
-def _texts(win):
-    return [c for c in win.body.inner.winfo_children() if isinstance(c, tk.Text)]
-
-
-def test_jira_live_is_second_in_nav_and_view(window):
-    assert [k for k, _ in window.factory.items()][:2] == ["dashboard", "jira_live"]
-    assert window.factory.title("jira_live") == "JIRA Live Data"
-    assert _view_labels(window)[1] == "JIRA Live Data"
-    assert window.nav.get(1).strip() == "JIRA LIVE DATA"
-
-
-def test_jira_tile_opens_the_live_screen(window, stub):
-    dash = window.current
-    names = list(dash._tile_vars)
-    tiles = dash.tiles.winfo_children()
-    tiles[names.index("jira_ticket")].event_generate("<Button-1>", x=1, y=1)
-    window.update()
-    assert window.current_key == "jira_live" and stub.calls["live"] == 0  # the tile never connects
-    assert window.current.status_var.get() == "No fetch yet · press Refresh"
-    window.show("dashboard")
-    tiles = window.current.tiles.winfo_children()
-    tiles[names.index("fact")].event_generate("<Button-1>", x=1, y=1)
-    window.update()
-    assert window.current_key == "entity:fact"
-
-
-def test_first_show_does_not_fetch_by_default(window, seeded, stub):
-    assert "jira_live_autofetch" not in seeded.config  # the house default: no connection until Refresh
-    screen = window.show("jira_live")
-    _settled(window)
-    assert stub.calls["live"] == 0 and screen.tree.get_children() == () and window.jira_live is None
-    assert screen.status_var.get() == "No fetch yet · press Refresh"
-    assert not screen.fetcher.running and not screen.refresh_button.instate(["disabled"])
-    window.show("dashboard")
-    assert window.show("jira_live") is screen
-    _settled(window)
-    assert stub.calls["live"] == 0 and window.jira_live is None
-
-
-def test_first_show_fetches_once_when_configured(window, seeded, stub, monkeypatch):
-    import re
-
-    monkeypatch.setitem(seeded.config, "jira_live_autofetch", True)
-    screen = window.show("jira_live")
-    assert screen.fetcher.running  # the show started the fetch; the window is not blocked on it
-    assert screen.wait_fetch().ok and stub.calls["live"] == 1
-    assert window.status_text() == "Jira: 5 issues fetched"
-    window.show("dashboard")  # its refresh rewrites the status bar with the database path
-    assert window.show("jira_live") is screen
-    _settled(window)
-    assert stub.calls["live"] == 1
-    assert window.jira_live.data is SAMPLE
-    assert len(screen.tree.get_children()) == 5
-    assert re.match(r"^5 issues · fetched \d\d:\d\d · project = HWL", screen.status_var.get())
-    assert screen.count_var.get() == "5 of 5 issues"
-
-
-def test_autofetch_off_waits_for_refresh(window, seeded, stub, monkeypatch):
-    monkeypatch.setitem(seeded.config, "jira_live_autofetch", False)
-    screen = window.show("jira_live")
-    _settled(window)
-    assert stub.calls["live"] == 0 and screen.tree.get_children() == ()
-    assert screen.status_var.get() == "No fetch yet · press Refresh"
-    assert screen.fetch() is None  # the button starts the worker and returns at once
-    assert screen.wait_fetch().ok and len(screen.tree.get_children()) == 5 and stub.calls["live"] == 1
-
-
-def test_fetch_runs_off_the_tk_thread_and_applies_on_it(window, stub, monkeypatch):
-    screen = window.show("jira_live")
-    refreshed_on: list[threading.Thread] = []
-    original = screen.refresh
-    monkeypatch.setattr(screen, "refresh", lambda: (refreshed_on.append(threading.current_thread()), original()))
-    stub.gate = threading.Event()
-    screen.fetch()
-    # in flight: the Tk thread is free, the button is off, both labels say so, a second fetch is ignored
-    assert screen.fetcher.running and screen.refresh_button.instate(["disabled"])
-    assert screen.status_var.get() == "Fetching Jira … up to 2000 issues, this can take a minute"
-    assert window.status_text() == "Fetching Jira …"
-    _settled(window)  # the poll fires and finds the worker still busy
-    screen.fetch()
-    screen.refresh()  # a repaint while fetching (an entity event, a show) keeps the label
-    assert screen.status_var.get().startswith("Fetching Jira …") and screen.tree.get_children() == ()
-    assert stub.calls["live"] == 1 and screen.fetcher.running
-    stub.gate.set()
-    result = screen.wait_fetch()
-    assert result.ok and result.data is SAMPLE and stub.calls["live"] == 1
-    assert stub.threads and all(t is not threading.main_thread() for t in stub.threads)
-    assert refreshed_on and refreshed_on[-1] is threading.main_thread()  # applied on the Tk thread
-    assert not screen.fetcher.running and not screen.refresh_button.instate(["disabled"])
-    assert len(screen.tree.get_children()) == 5 and window.status_text() == "Jira: 5 issues fetched"
-    assert screen.status_var.get().startswith("5 issues · fetched")
-
-
-def test_screen_destroyed_mid_fetch_drops_the_result(window, stub, monkeypatch):
-    errors = []
-    monkeypatch.setattr(window, "report_callback_exception", lambda *a: errors.append(a))
-    screen = window.show("jira_live")
-    stub.gate = threading.Event()
-    screen.fetch()
-    worker = screen.fetcher.thread
-    assert window.pick_theme("pink-noir").ok  # rebuilds every screen while the worker is busy; no join
-    assert not screen.winfo_exists() and worker.is_alive()
-    rebuilt = window.current
-    assert rebuilt is not screen and rebuilt.status_var.get() == "No fetch yet · press Refresh"
-    stub.gate.set()
-    worker.join(5.0)
-    assert not worker.is_alive()
-    _settled(window)
-    assert errors == [] and window.jira_live is None and rebuilt.tree.get_children() == ()
-    assert stub.calls["live"] == 1 and screen.fetcher.last.ok  # produced, then dropped
-
-
-def test_refresh_keeps_rows_when_the_fetch_fails(window, seeded, stub, monkeypatch):
-    screen = _fetched(window)
-    screen.fetch()
-    assert screen.wait_fetch().ok and stub.calls["live"] == 2
-    stub.fail = NO_SESSION
-    screen.fetch()
-    assert not screen.wait_fetch().ok
-    assert len(screen.tree.get_children()) == 5 and window.jira_live.ok
-    assert window.status_text().startswith("Error: no Atlassian session")
-    # a fresh window whose configured first fetch fails: empty table, Offline label, no second fetch on show
-    monkeypatch.setitem(seeded.config, "jira_live_autofetch", True)
-    fresh = _open(seeded)
-    try:
-        fake = FakeExecuteQuiet(fresh)
-        fake.fail = NO_SESSION
-        fresh.execute_quiet = fake
-        screen = fresh.show("jira_live")
-        assert not screen.wait_fetch().ok
-        assert screen.tree.get_children() == () and screen.status_var.get().startswith("Offline:")
-        assert fresh.jira_live is not None and not fresh.jira_live.ok
-        fresh.show("dashboard")
-        fresh.show("jira_live")
-        _settled(fresh)
-        assert fake.calls["live"] == 1
-    finally:
-        _shut(fresh)
-
-
-def test_sorting_is_numeric_on_keys_and_nulls_last(window, stub):
-    screen = _fetched(window)
-    screen.sort_by("key")
-    assert screen.tree.get_children() == ("HWL-2", "HWL-9", "HWL-10", "HWL-33", "HWL-100")
-    assert screen.tree.heading("key", "text").endswith("▲")
-    screen.sort_by("key")
-    assert screen.tree.get_children() == ("HWL-100", "HWL-33", "HWL-10", "HWL-9", "HWL-2")
-    assert screen.tree.heading("key", "text").endswith("▼") and screen.tree.heading("due", "text") == "Due"
-    screen.sort_by("due")
-    assert screen.tree.get_children() == ("HWL-2", "HWL-100", "HWL-9", "HWL-10", "HWL-33")
-    screen.sort_by("due")
-    assert screen.tree.get_children() == ("HWL-10", "HWL-9", "HWL-100", "HWL-2", "HWL-33")
-    screen.clear_filters()
-    assert screen.tree.get_children() == ("HWL-9", "HWL-10", "HWL-100", "HWL-2", "HWL-33")  # server order
-
-
-def test_filters_are_local_and_combine(window, stub):
-    screen = _fetched(window)
-    screen.filter_var.set("hwl-1")
-    assert screen.tree.get_children() == ("HWL-10", "HWL-100")
-    screen.filter_var.set("brake")
-    assert screen.tree.get_children() == ("HWL-9",)
-    screen.filter_var.set("")
-    screen.filters["status"].set("Done")
-    screen._populate()
-    assert screen.tree.get_children() == ("HWL-100", "HWL-2") and screen.count_var.get() == "2 of 5 issues"
-    assert list(screen.filter_boxes["status_category"]["values"]) == ["(all)", "new", "indeterminate", "done"]
-    assert list(screen.filter_boxes["assignee"]["values"]) == ["(all)", "Ada", "Cy", "(none)"]
-    screen.filters["status"].set("(all)")
-    screen.filters["assignee"].set("(none)")
-    screen._populate()
-    assert screen.tree.get_children() == ("HWL-33",)
-    screen.filters["assignee"].set("(all)")
-    screen.filters["issue_type"].set("Bug")
-    screen._populate()
-    assert screen.tree.get_children() == ("HWL-10", "HWL-2")
-    screen.filters["priority"].set("Low")
-    screen.filters["status_category"].set("done")
-    screen._populate()
-    assert screen.tree.get_children() == ("HWL-2",)  # AND
-    screen.clear_filters()
-    assert len(screen.tree.get_children()) == 5 and all(v.get() == "(all)" for v in screen.filters.values())
-    assert stub.calls["live"] == 1  # filters never re-query
-
-
-def test_done_rows_are_muted_and_cells_are_shaped(window, stub):
-    screen = _fetched(window)
-    for iid in screen.tree.get_children():
-        tags = screen.tree.item(iid, "tags")
-        assert ("muted" in tags) == (iid in ("HWL-100", "HWL-2"))
-        assert ("odd" in tags) != ("even" in tags)
-    assert str(screen.tree.tag_configure("muted", "foreground")) == window.theme.palette.muted
-    assert screen.tree.set("HWL-9", "labels") == "safety, VAT"
-    assert screen.tree.set("HWL-9", "comments") == "[Comments]"
-    assert len(screen.tree.set("HWL-9", "created")) == 10
-    assert screen.tree.set("HWL-33", "assignee") == "" and screen.tree.set("HWL-33", "due") == ""
-
-
-def test_open_selected_reports_the_url_when_not_interactive(window, stub):
-    screen = _fetched(window)
-    screen.open_selected()
-    assert window.status_text() == "Select an issue first"
-    screen.tree.focus("HWL-9")
-    screen.open_selected()
-    assert window.status_text() == "Open: https://x.atlassian.net/browse/HWL-9"
-
-
-def test_theme_rebuild_keeps_the_fetch(window, stub):
-    _fetched(window)
-    assert window.pick_theme("pink-noir").ok
-    assert window.current_key == "jira_live" and stub.calls["live"] == 1
-    screen = window.current
-    assert len(screen.tree.get_children()) == 5
-    assert str(screen.tree.tag_configure("muted", "foreground")) == "#955073"  # pink-noir's muted
-
-
+# -- the `jira.live` event (a forwarded `jira live`) changes no row, so it refreshes no screen --------
 def test_jira_live_event_does_not_refresh_screens(window, seeded):
     assert window.current_key == "dashboard"
     seeded.events.publish("jira.live", count=0, jql="x", truncated=False, fetched_at="", actor="agent")
@@ -847,106 +525,6 @@ def test_jira_live_event_does_not_refresh_screens(window, seeded):
     assert window._refresh_job is not None
     window._cancel_refresh()
     assert seeded.execute("count", entity="jira_ticket").data["count"] == 0
-
-
-# -- the Comments column and the comments window ------------------------------------------
-def test_comments_click_is_routed_by_column(window, stub, monkeypatch):
-    from types import SimpleNamespace
-
-    screen = _fetched(window)
-    monkeypatch.setattr(screen.tree, "identify_column", lambda x: "#1")
-    monkeypatch.setattr(screen.tree, "identify_row", lambda y: "HWL-9")
-    assert screen._on_click(SimpleNamespace(x=5, y=5)) == "break"
-    assert "HWL-9" in window.comment_windows
-    assert window.comment_windows["HWL-9"].wait_fetch().ok and stub.calls["comments"] == 1
-    monkeypatch.setattr(screen.tree, "identify_column", lambda x: "#3")
-    assert screen._on_click(SimpleNamespace(x=5, y=5)) is None and len(window.comment_windows) == 1
-    screen.tree.focus("HWL-10")
-    screen._on_key_c(None)
-    assert set(window.comment_windows) == {"HWL-9", "HWL-10"}
-    assert window.comment_windows["HWL-10"].wait_fetch().ok and stub.calls["comments"] == 2
-
-
-def test_comments_window_lists_newest_first(window, stub, seeded):
-    import re
-
-    win = window.open_comments("HWL-9")
-    assert win.wait_fetch().ok
-    assert win.title() == "HWL-9 — Comments" and win.cget("background") == window.theme.palette.bg
-    children = win.body.inner.winfo_children()
-    metas = [c.cget("text") for c in children if isinstance(c, ttk.Label)]
-    assert metas[0].startswith("Ada · 2026-10-26 15:02") and metas[0].endswith("· edited 2026-10-26 15:40")
-    assert metas[1] == "Bob · 2026-10-24 09:00" and metas[2] == "Cy · 2026-10-21 09:12"
-    texts = _texts(win)
-    assert [str(t.cget("state")) for t in texts] == ["disabled"] * 3
-    assert texts[1].get("1.0", "end").strip() == "Draft attached.\nSee the sheet."
-    assert re.match(r"^3 comments · fetched \d\d:\d\d$", win.status_var.get())
-    # second open: the same window comes to the front
-    assert window.open_comments("HWL-9") is win and len(window.comment_windows) == 1
-    assert window.open_comments("HWL-10").wait_fetch().ok
-    assert len(window.comment_windows) == 2
-    # refresh, then a failed refresh keeps the blocks and the window
-    assert win.fetch() is None
-    assert win.wait_fetch().ok and stub.calls["comments"] == 3 and len(_texts(win)) == 3
-    stub.fail = NO_SESSION
-    win.fetch()
-    assert not win.wait_fetch().ok and len(_texts(win)) == 3
-    assert win.status_var.get().startswith("Error: no Atlassian session") and win.winfo_exists()
-    assert window.status_text().startswith("Error:")
-    stub.fail = None
-    # empty history
-    empty = window.open_comments("HWL-2")
-    assert empty.wait_fetch().ok
-    labels = [c.cget("text") for c in empty.body.inner.winfo_children() if isinstance(c, ttk.Label)]
-    assert labels == ["No comments."]
-    # close, then a theme pick destroys the rest
-    empty.close()
-    assert "HWL-2" not in window.comment_windows and not empty.winfo_exists()
-    destroyed = []
-    win.bind("<Destroy>", lambda e: destroyed.append(1))
-    assert window.pick_theme("pink-noir").ok
-    assert window.comment_windows == {} and destroyed
-    assert seeded.execute("count", entity="jira_ticket").data["count"] == 0
-
-
-def test_comments_fetch_runs_off_the_tk_thread(window, stub, monkeypatch):
-    errors = []
-    monkeypatch.setattr(window, "report_callback_exception", lambda *a: errors.append(a))
-    stub.gate = threading.Event()
-    win = window.open_comments("HWL-9")
-    # in flight: the window is live, its button is off, its label says so, a second fetch is ignored
-    assert win.fetcher.running and win.refresh_button.instate(["disabled"])
-    assert win.status_var.get() == "Fetching comments …"
-    _settled(window)
-    win.fetch()
-    assert stub.calls["comments"] == 1 and win.fetcher.running
-    stub.gate.set()
-    assert win.wait_fetch().ok and stub.calls["comments"] == 1
-    assert stub.threads and all(t is not threading.main_thread() for t in stub.threads)
-    assert not win.refresh_button.instate(["disabled"]) and len(_texts(win)) == 3
-    assert win.status_var.get().startswith("3 comments · fetched")
-    # closed mid-fetch: nothing joins the worker and its Result is dropped without a callback error
-    stub.gate = threading.Event()
-    other = window.open_comments("HWL-10")
-    worker = other.fetcher.thread
-    other.close()
-    assert not other.winfo_exists() and "HWL-10" not in window.comment_windows and worker.is_alive()
-    stub.gate.set()
-    worker.join(5.0)
-    assert not worker.is_alive()
-    _settled(window)
-    assert errors == [] and stub.calls["comments"] == 2 and other.fetcher.last.ok
-
-
-def test_comment_windows_close_with_the_main_window(seeded):
-    win = _open(seeded)
-    win.execute_quiet = FakeExecuteQuiet(win)
-    comments = win.open_comments("HWL-9")
-    assert comments.wait_fetch().ok
-    destroyed = []
-    comments.bind("<Destroy>", lambda e: destroyed.append(1))
-    _shut(win)
-    assert destroyed
 
 
 def test_gui_main_returns_3_without_a_window_while_a_holder_runs(hold, tmp_path, monkeypatch):
@@ -1105,15 +683,6 @@ def test_enum_column_fits_the_longest_lookup_value(window, seeded):
     assert int(screen.tree.column("link_class", "width")) >= cells.measure(longest) + 24
 
 
-def test_jira_live_columns_fit_their_text(window, stub):
-    screen = _fetched(window)
-    assert len(screen.tree.get_children()) == 5 and screen.tree.set("HWL-9", "comments") == "[Comments]"
-    _assert_fitted(screen.tree)
-    screen.sort_by("summary")  # the sort marker is part of the heading; a repaint refits
-    _assert_fitted(screen.tree)
-    assert not screen.tree.column("summary", "stretch")  # a fitted column never shrinks below its text
-
-
 def test_dashboard_columns_fit_their_text(window):
     dash = window.current
     assert dash.key == "dashboard"
@@ -1139,13 +708,13 @@ def test_no_table_on_any_screen_has_an_id_order_or_uid_column(window):
     for key, _ in window.factory.items():
         screen = window.show(key)
         trees = _trees(screen)
-        if key.startswith("entity:") or key in ("dashboard", "jira_live"):
+        if key.startswith("entity:") or key == "dashboard":
             assert trees, key
         for tree in trees:
             columns = set(tree.tk.splitlist(tree["columns"]))
             assert not columns & {"id", "order", "uid"}, (key, columns)
             seen += 1
-    assert seen >= 11  # seven entity tables, three dashboard tables, the JIRA Live Data table
+    assert seen >= 10  # seven entity tables, three dashboard tables
     dash = window.show("dashboard")
     assert tuple(dash.audit["columns"]) == ("ts", "actor", "action", "entity", "entity_id")  # the trace stays
 

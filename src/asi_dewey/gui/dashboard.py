@@ -10,9 +10,6 @@ from ..services.queries import DUE_WINDOW_DAYS, open_jira_tickets, recent_change
 from .screens import Screen, fit_columns
 from .theme import GridBanner
 
-# a tile that opens something other than its entity's screen: the Jira cache count opens the live view
-TILE_TARGETS = {"jira_ticket": "jira_live"}
-
 
 class DashboardScreen(Screen):
     def build(self) -> None:
@@ -28,7 +25,7 @@ class DashboardScreen(Screen):
             tile.grid(row=index // 5, column=index % 5, padx=4, pady=4, sticky="nsew")
             ttk.Label(tile, textvariable=var, style="TileCount.TLabel").pack()
             ttk.Label(tile, text=schema.sheet.upper(), style="TileName.TLabel").pack()
-            key = TILE_TARGETS.get(schema.name, f"entity:{schema.name}")
+            key = f"entity:{schema.name}"
             if key not in self.window.factory:
                 continue  # counted but not clickable: the entity has no screen (HIDDEN_ENTITY_SCREENS)
             for widget in (tile, *tile.winfo_children()):

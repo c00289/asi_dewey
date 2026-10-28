@@ -31,7 +31,6 @@ ENV_CONFIG = "ASI_DEWEY_CONFIG"
 CONFIG_NAME = "dewey.toml"
 CONFIG_KEYS = ("db", "workbook", "out")
 TEXT_CONFIG_KEYS = ("jira_jql", "jira_live_jql")
-BOOL_CONFIG_KEYS = ("jira_live_autofetch",)  # copied only when the TOML value is a real boolean
 
 
 def load_config(path: str | Path | None = None) -> dict[str, Any]:
@@ -40,10 +39,8 @@ def load_config(path: str | Path | None = None) -> dict[str, Any]:
     Keys ``db``, ``workbook`` and ``out`` are paths; a relative one resolves against the config
     file's own directory, so the workbook and the generated files can live in another folder.
     ``jira_jql`` and ``jira_live_jql`` are plain text (the queries ``jira sync`` and ``jira live``
-    run by default); ``jira_live_autofetch`` is a boolean and is copied only when the TOML value is
-    one (a string ``"false"`` is ignored, so the default applies). Its default is ``False``: the
-    JIRA Live Data window never connects on its own unless the file says ``true`` (0.7.3). Missing
-    file: ``{}``.
+    run by default). Any other key is ignored (``jira_live_autofetch`` of 0.7.3 to 0.8.0 among
+    them: the window it configured was removed in 0.8.1). Missing file: ``{}``.
     """
     import tomllib
 
@@ -61,9 +58,6 @@ def load_config(path: str | Path | None = None) -> dict[str, Any]:
     for key in TEXT_CONFIG_KEYS:
         if data.get(key):
             config[key] = str(data[key]).strip()
-    for key in BOOL_CONFIG_KEYS:
-        if isinstance(data.get(key), bool):
-            config[key] = data[key]
     return config
 
 

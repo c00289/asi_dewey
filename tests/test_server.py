@@ -226,6 +226,23 @@ def test_screen_and_screens(window):
     assert code == 200 and not res["ok"] and "'show'" in res["errors"][0]
 
 
+def test_jira_live_is_no_longer_a_screen(window):
+    from asi_dewey.errors import NotFound
+
+    assert "jira_live" not in window.factory and "JIRA Live Data" not in [t for _, t in window.factory.items()]
+    assert not hasattr(window, "jira_live") and not hasattr(window, "open_comments")
+    with pytest.raises(NotFound):
+        window.show("jira_live")
+    code, res = call(window, "POST", "/screen", {"show": "jira_live"})
+    assert code == 200 and not res["ok"] and "unknown screen" in res["errors"][0]
+    assert window.current_key == "dashboard"
+    code, res = call(window, "GET", "/screens")
+    assert [s["key"] for s in res["data"]["screens"]][:2] == ["dashboard", "entity:task"]
+    # the verb is still there for the command line and the server
+    code, res = call(window, "POST", "/execute", {"verb": "jira", "args": {"action": "live"}})
+    assert code == 200 and res["verb"] == "jira" and not res["ok"]  # no Hopper fixtures here: a failed Result
+
+
 # -- remote recolour ------------------------------------------------------------------------------
 def _prefs() -> dict:
     from asi_dewey.prefs import prefs_path

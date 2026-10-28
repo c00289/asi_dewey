@@ -5,9 +5,10 @@ view of the database. ``sync`` upserts by issue key through the ordinary ``Entit
 so validation, the audit log (actor ``hopper``) and the event bus all apply. Nothing is ever
 deleted: a row whose key is no longer returned by the JQL is reported as stale, not removed.
 
-``live`` and ``comments`` (0.5.0) feed the JIRA Live Data window and its comments view: a fetch
-held in memory by the caller, never written to the database or the audit log. Their row shapes
-are the family convention (``docs/jira-live-data-plan.md``, section 3.1).
+``live`` and ``comments`` (0.5.0) are a fetch held in memory by the caller, never written to the
+database or the audit log. Their row shapes are the family convention
+(``docs/jira-live-data-plan.md``, section 3.1), which asi_kletz's window still shows; Dewey's
+JIRA Live Data window was removed in 0.8.1 and the verbs stay for the command line.
 """
 
 from __future__ import annotations

@@ -25,11 +25,6 @@ out = "out"
 # `asi-hopper auth login`.
 jira_jql = "project = HWL AND (assignee = currentUser() OR watcher = currentUser()) AND statusCategory != Done"
 
-# JQL the JIRA Live Data window and `asi-dewey jira live` fetch (default: every HWL issue, newest
-# change first). Distinct from jira_jql, which is what `jira sync` caches into the Jira Ticket table.
+# JQL `asi-dewey jira live` fetches (default: the HWL issues that involve you, newest change first).
+# Distinct from jira_jql, which is what `jira sync` caches into the Jira Ticket table.
 jira_live_jql = "project = HWL AND (assignee = currentUser() OR reporter = currentUser() OR watcher = currentUser()) ORDER BY updated DESC"
-
-# Opt in to one fetch when the JIRA Live Data window is first shown in a session. Default false
-# (since 0.7.3): the window never connects to Jira on its own and waits for Refresh. Set true to
-# have the first show fetch (up to 2000 issues at 50 a page; the window stays live meanwhile).
-jira_live_autofetch = false

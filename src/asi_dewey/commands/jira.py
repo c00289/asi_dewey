@@ -2,7 +2,7 @@
 
 ``jira sync`` pulls the configured JQL into ``jira_ticket`` (upsert by key, never delete),
 ``jira status`` reports the cached rows and the last sync, ``jira get <key>`` shows one live issue.
-``jira live`` fetches the JIRA Live Data table (held in memory by the caller, never stored) and
+``jira live`` fetches a live table of issues (held in memory by the caller, never stored) and
 publishes ``jira.live``; ``jira comments <key>`` lists one issue's comment history, newest first,
 and publishes nothing. A missing Atlassian session is a ``Result.failure`` that says to run
 ``asi-hopper auth login``.
@@ -24,7 +24,7 @@ class JiraCommand(Command):
     verb = "jira"
     help = (
         "Jira through asi_hopper (read only): sync tickets into jira_ticket, status, get <key>, "
-        "live (the JIRA Live Data table), or comments <key>."
+        "live (a table of issues, never stored), or comments <key>."
     )
     arguments = (
         Argument("action", " | ".join(ACTIONS), required=True, choices=ACTIONS),

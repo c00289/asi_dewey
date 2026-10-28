@@ -3,10 +3,9 @@
 The window never touches storage directly. Every change goes through ``run`` which calls
 ``Brain.execute`` with actor ``gui``; the event bus then refreshes whatever screen is open,
 so edits made by the CLI or an agent against the same Brain appear live too. Two events do not
-refresh a screen: ``theme.changed`` repaints the window, and ``jira.live`` changes no database
-row (the screen that ran the verb paints its own Result). ``jira.live`` is also the one event
-that may arrive on a worker thread (the JIRA screens fetch off the Tk thread through
-``execute_quiet``), which is why its branch in ``_on_event`` returns before any Tk call.
+refresh a screen: ``theme.changed`` repaints the window, and ``jira.live`` (a forwarded
+``jira live``) changes no database row. Every verb runs on the Tk thread: the JIRA Live Data
+screen, which fetched on a worker thread, was removed in 0.8.1.
 
 The window owns the local automation server (``automation/server.py``): it starts it after the
 first screen is shown, writes the session file, shows the port in the online indicator, and stops
@@ -27,7 +26,6 @@ from ..automation.session import automation_enabled, clear_session, session_path
 from ..commands import Result
 from ..locks import lock_dir
 from ..version import __version__
-from .jira_comments_window import JiraCommentsWindow
 from .palettes import FAMILIES
 from .screens import Screen, ScreenFactory, build_default_screens
 from .theme import Theme, ThemeFactory
@@ -92,10 +90,6 @@ class MainWindow(tk.Tk):
         self.current: Screen | None = None
         self.current_key: str | None = None
         self._refresh_job: str | None = None
-        # the JIRA Live Data fetch of this session and the open comments windows, one per ticket;
-        # both outlive the screens, which a theme pick rebuilds
-        self.jira_live: Result | None = None
-        self.comment_windows: dict[str, JiraCommentsWindow] = {}
         self.theme_var = tk.StringVar(value=self.theme.title)  # shared by the picker and View > Theme
         self._theme_keys = self._titles_to_keys()
 
@@ -329,9 +323,8 @@ class MainWindow(tk.Tk):
         self.theme = ThemeFactory.create(key)
         self.theme.apply(self)  # fonts, ttk base, styles, option database
         self.theme_var.set(self.theme.title)
-        for child in self.winfo_children():  # menu, paned body, rule, status bar, comments windows
+        for child in self.winfo_children():  # menu, paned body, rule, status bar
             child.destroy()
-        self.comment_windows.clear()  # destroyed with the rest: a Toplevel is a child of the root
         self._screens.clear()
         self.current = None
         self.current_key = None
@@ -372,47 +365,12 @@ class MainWindow(tk.Tk):
     # -- commands -------------------------------------------------------
     def run(self, verb: str, **args: Any) -> Result:
         """Execute as actor ``gui``; a failure is a status-bar line plus a dialog when interactive."""
-        return self._report(verb, self.brain.execute(verb, args, actor="gui"), dialog=True)
-
-    def run_quiet(self, verb: str, **args: Any) -> Result:
-        """``run`` without the dialog: ``execute_quiet``, then the status bar is where a failure is reported."""
-        return self._report(verb, self.execute_quiet(verb, **args), dialog=False)
-
-    def execute_quiet(self, verb: str, **args: Any) -> Result:
-        """``Brain.execute`` as actor ``gui`` and nothing else: no status bar, no dialog, no Tk call.
-
-        Safe to call from a worker thread. The JIRA screens do exactly that so a slow Jira (2000
-        issues at 50 a page, or a gateway wait) never freezes the window; they hand the Result to
-        ``report_quiet`` on the Tk thread afterwards. The verb may publish events (``jira live``
-        publishes ``jira.live``); ``_on_event`` must return for such a topic before touching Tk.
-        """
-        return self.brain.execute(verb, args, actor="gui")
-
-    def report_quiet(self, verb: str, result: Result) -> Result:
-        """The status-bar half of ``run_quiet`` for a Result obtained elsewhere (a worker's fetch). Tk thread only."""
-        return self._report(verb, result, dialog=False)
-
-    def _report(self, verb: str, result: Result, *, dialog: bool) -> Result:
+        result = self.brain.execute(verb, args, actor="gui")
         if not result.ok:
-            message = "; ".join(result.errors) or "unknown error"
-            if dialog:
-                self.notify_error(f"{verb} failed", message)
-            else:
-                self.set_status(f"Error: {message}")
+            self.notify_error(f"{verb} failed", "; ".join(result.errors) or "unknown error")
         elif result.warnings:
             self.set_status("Warning: " + "; ".join(result.warnings))
         return result
-
-    def open_comments(self, key: str) -> JiraCommentsWindow:
-        """The comments window of ``key``: brought to the front if open, else created and fetched."""
-        win = self.comment_windows.get(key)
-        if win is not None and win.winfo_exists():
-            win.lift()
-            win.focus_set()
-            return win
-        win = self.comment_windows[key] = JiraCommentsWindow(self, key)
-        win.fetch()
-        return win
 
     def build_document(self) -> Screen:
         """File > Build document…: the Generate screen with the Documents list focused."""
@@ -442,7 +400,7 @@ class MainWindow(tk.Tk):
                     self.set_theme(key)
             return
         if topic == "jira.live":
-            return  # no database row changed: the live screen painted its own Result
+            return  # a forwarded `jira live`: no database row changed, nothing to refresh
         if self._refresh_job is not None:
             return
         self._refresh_job = self.after(50, self._refresh_after_event)
