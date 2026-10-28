@@ -11,6 +11,60 @@ All notable changes to ASI Dewey are recorded here. The format follows
 - Excel import diff preview; `fill` / `submit` / `cancel` puppeting of a screen's form; a
   `View > Automation` submenu or screen; date picker widget.
 
+## [0.8.1] - 2026-10-28
+
+The JIRA Live Data screen is gone from the window, by the owner's instruction of 2026-10-28.
+The instruction was "remove the jira live data screen from dewey". Nothing of the command line
+changed: `jira live` and `jira comments` still run through asi_hopper and still answer the same
+`Result`, because they were never the screen's; the screen was one client of them, and the
+`jira_ticket` cache that `jira sync` feeds, the Dashboard's Open Jira tickets table and every
+automation endpoint stay. Schema version unchanged (2).
+
+### Removed
+- **The `jira_live` screen** (`gui/jira_live_screen.py`), its registration in
+  `build_default_screens`, its `View` entry and its place in the navigation list (second since
+  0.5.0): the window has ten screens again, Dashboard first, then the seven entity screens,
+  Export / Import, Generate. `POST /screen {"show": "jira_live"}` is now `ok: false, unknown
+  screen` like any other unknown key, and `GET /screens` no longer lists it.
+- **The comments window** (`gui/jira_comments_window.py`, opened only from that screen),
+  `MainWindow.open_comments` and `comment_windows`, and `MainWindow.jira_live` (the fetch kept
+  for the session).
+- **The worker-thread machinery that existed only for those fetches**: `WorkerFetch` and
+  `POLL_MS` in `gui/screens.py`, `MainWindow.execute_quiet`, `run_quiet` and `report_quiet`
+  (`run` reports its own Result now). Every verb the window runs is on the Tk thread again.
+- **The Dashboard's Jira tile no longer opens anything** (`TILE_TARGETS` removed): like the
+  Safety Plan tile it counts the cached rows and is not clickable, because `jira_ticket` is a
+  `HIDDEN_ENTITY_SCREENS` entity with no screen.
+- **`jira_live_autofetch`** (`dewey.toml`, 0.7.3 to 0.8.0): the key is ignored, with every other
+  unknown key; `dewey.example.toml` drops it. `jira_live_jql` stays: it is what `jira live` fetches.
+
+### Changed
+- **Plan 3.1 clarified, so Dewey and Kletz read it the same way.** `load_rows` in merge mode, a
+  file row whose uid is unknown but whose id matches a stored row: the row now takes the file's
+  uid (0.8.0 kept the stored one and warned, listed there as a deviation), with a warning that
+  names old and new (`fact 2 takes the file's uid … (was …)`). This is the one deliberate identity
+  reconciliation: a Kletz dump merged into Dewey hands the cached `safety_plan_row` rows Kletz's
+  uids, as the plan intends. The unique index never trips: a file uid another row already holds
+  is matched by uid first and the id is not consulted. `update` stays immutable. A workbook sheet
+  carries no `id` column (`map_columns` maps schema fields only), so for a workbook the
+  reconciliation is `--mode replace`, which keeps the sheet's uids.
+  `test_merge_by_id_adopts_the_file_uid_and_warns`; the Kletz-sheet test now starts from a cached
+  row with a Dewey uid.
+- `MainWindow._on_event` still returns for `jira.live` (a forwarded `jira live` changes no row)
+  and the docstrings of `commands/jira.py`, `services/jira_service.py` and `gui/screens.py` no
+  longer name a window. `docs/jira-live-data-plan.md` says the screen was removed; asi_kletz
+  keeps its window and the row convention of that plan's section 3.1 is unchanged.
+
+### Tests
+- 215 → 198. The live-screen and comments-window tests of `test_gui.py` (stubbed fetches, filters,
+  sorting, muted rows, the worker thread, the Comments column, the comments windows, their column
+  fit) are gone; the navigation, View menu, nav list, dashboard tile and screen-walk assertions
+  count ten screens; `test_jira_live_event_does_not_refresh_screens` stays. `test_core.py`:
+  `jira_live_autofetch = true` in `dewey.toml` is ignored. New: `test_jira_live_is_no_longer_a_screen`
+  (`test_server.py`): not in the factory, `show` raises `NotFound`, `/screen` answers unknown
+  screen, `/screens` lists Dashboard then Tasks, and `jira live` through `/execute` is still a verb.
+  `test_jira.py` (the verbs on Hopper's replay fixtures) is untouched.
+
 ## [0.8.0] - 2026-10-28
 
 Every row of every entity carries a hidden `uid`, and no table shows `id` or `order`.
@@ -579,7 +633,8 @@ First alpha. Core only, no screens.
 - pytest suite covering schema coercion, CRUD, audit, events, transfer round trips, and the CLI.
 - README and this changelog.
 
-[Unreleased]: https://example.invalid/asi-dewey/compare/v0.8.0...HEAD
+[Unreleased]: https://example.invalid/asi-dewey/compare/v0.8.1...HEAD
+[0.8.1]: https://example.invalid/asi-dewey/compare/v0.8.0...v0.8.1
 [0.8.0]: https://example.invalid/asi-dewey/compare/v0.7.4...v0.8.0
 [0.7.4]: https://example.invalid/asi-dewey/compare/v0.7.3...v0.7.4
 [0.7.3]: https://example.invalid/asi-dewey/compare/v0.7.2...v0.7.3

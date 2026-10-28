@@ -3,12 +3,20 @@
 One of the [ASI FuSa tools](https://github.com/c00289/c00289/blob/main/README.md) by Roy Mendoza; the master README there lists every sibling.
 
 A functional-safety (FuSa) working-knowledge API for the Wheel Loader programme, with a
-command line and a tkinter desktop window on top. Version **0.8.0**, alpha. Named after
+command line and a tkinter desktop window on top. Version **0.8.1**, alpha. Named after
 Melvil Dewey: one classification scheme, many views.
 
 The idea, in one sentence: a database is the single source of truth, the Excel workbook
 is a generated *view* of it, and everything a human can do through a front end an AI agent
 can do through the same commands.
+
+## What is in 0.8.1
+
+- **The JIRA Live Data screen is gone from the window**, by the owner's instruction of 2026-10-28,
+  with its comments window and the `jira_live_autofetch` key. The window has ten screens: Dashboard,
+  the seven entity screens, Export / Import, Generate; the `JIRA TICKETS` tile counts the cache and
+  opens nothing. Nothing of the command line changed: `jira sync`, `jira status`, `jira get`,
+  `jira live` and `jira comments` are as they were (see [Jira](#jira)). asi_kletz keeps its window.
 
 ## What is in 0.8.0
 
@@ -80,17 +88,17 @@ can do through the same commands.
 
 ## What is in 0.5.0
 
-- **The JIRA Live Data window**, second in the navigation list and in `View`, right below the
-  Dashboard: one Refresh button and one big table of every HWL issue, past and present, with
-  status and category, sortable on any column, done rows dimmed, and local filters (a text box
-  on key or summary; Status, Category, Type, Priority, Assignee). A `[Comments]` cell on every
-  row opens that ticket's **comments window**, newest first. Two new actions on the `jira` verb
-  feed them, `jira live` and `jira comments <key>`; nothing is written to the database. The
-  same window, by convention, exists in [asi_kletz](../asi_kletz). See
-  [JIRA Live Data](#jira-live-data) and `docs/jira-live-data-plan.md`.
+- **The JIRA Live Data window** (removed in 0.8.1; the verbs stay), second in the navigation list
+  and in `View`, right below the Dashboard: one Refresh button and one big table of every HWL
+  issue, past and present, with status and category, sortable on any column, done rows dimmed,
+  and local filters (a text box on key or summary; Status, Category, Type, Priority, Assignee).
+  A `[Comments]` cell on every row opens that ticket's **comments window**, newest first. Two
+  new actions on the `jira` verb feed them, `jira live` and `jira comments <key>`; nothing is
+  written to the database. The same window, by convention, exists in [asi_kletz](../asi_kletz).
+  See `docs/jira-live-data-plan.md`.
 - Windows in nav order: Dashboard, JIRA Live Data, Tasks, Facts, Machine Functions, Use Cases,
   Links, QMS Documents, People, Export / Import, Generate. The `JIRA TICKETS` tile on the
-  dashboard opens the live window.
+  dashboard opens the live window. (Since 0.8.1: no JIRA Live Data, and the tile opens nothing.)
 
 ## What is in 0.4.0
 
@@ -166,8 +174,8 @@ Not yet: approval mode, `fill` / `submit` / `cancel` puppeting of a screen's for
 - `openpyxl` (Excel views)
 - the sibling checkouts `../asi_escher` and `../asi_gutenberg` (diagram and document views);
   they bring matplotlib, Pillow, reportlab and python-docx, all imported lazily
-- the sibling checkout `../asi_hopper` (Jira, read only: `jira sync`, `jira live`, the JIRA Live
-  Data window); imported lazily too
+- the sibling checkout `../asi_hopper` (Jira, read only: `jira sync`, `jira live`, `jira comments`);
+  imported lazily too
 - `pytest` for the test suite
 
 ## Install
@@ -197,10 +205,10 @@ because it is specific to one machine; copy `dewey.example.toml` to start. Prece
 every path is the explicit argument (`--db`, `--out`), then the environment (`ASI_DEWEY_DB`,
 `ASI_DEWEY_WORKBOOK`, `ASI_DEWEY_OUT`), then `dewey.toml`, then `./dewey.db`, `dewey.xlsx`
 and `out/` next to the database. `status` reports all three as `database`, `workbook_path`
-and `out_dir`. Three more keys are plain settings, not paths: `jira_jql` (what `jira sync`
-caches), `jira_live_jql` (what the JIRA Live Data window shows) and `jira_live_autofetch`
-(a real TOML boolean, default `false` since 0.7.3: the window never connects until Refresh
-unless the key says `true`); see [Jira](#jira) and `dewey.example.toml`.
+and `out_dir`. Two more keys are plain settings, not paths: `jira_jql` (what `jira sync`
+caches) and `jira_live_jql` (what `jira live` fetches); see [Jira](#jira) and
+`dewey.example.toml`. `jira_live_autofetch` (0.7.3 to 0.8.0) is ignored since 0.8.1, with any
+other unknown key.
 
 ## Quick start
 
@@ -281,7 +289,7 @@ asi-dewey jira sync --dry-run true      # what would change, nothing written
 asi-dewey jira sync                     # upsert by issue key into jira_ticket, audit action jira:sync
 asi-dewey jira status                   # rows, counts by status, last sync, asi_hopper session
 asi-dewey jira get HWL-2572             # one live issue and the row it maps to
-asi-dewey jira live                     # the JIRA Live Data table: every HWL issue, held in memory
+asi-dewey jira live                     # a live table of issues, held in memory, never stored
 asi-dewey jira comments HWL-2572        # one issue's comment history, newest first
 ```
 
@@ -291,28 +299,12 @@ without one are yours and are never touched. A key the JQL no longer returns is 
 stale, never deleted. Jira's status category maps to the `jira_status` lookup; `blocked` only
 when Jira itself says Blocked. The `JIRA` sheet of the workbook carries the new columns.
 
-### JIRA Live Data
+### `jira live` and `jira comments`
 
-The window (second in the navigation list, `View > JIRA Live Data`, or the `JIRA TICKETS` tile
-on the dashboard) shows Jira and never changes it or stores what it shows. **Refresh** is the
-one action: it runs `jira live` on a worker thread, so the window stays live while up to 2000
-issues come in at 50 a page (the label says "Fetching Jira … up to 2000 issues, this can take a
-minute" and Refresh is disabled meanwhile), and keeps the Result on the window object for the
-session, so a theme pick repaints without a second fetch. The window never connects on its own:
-the first show paints "No fetch yet · press Refresh" unless `jira_live_autofetch = true` in
-`dewey.toml` (default `false` since 0.7.3). The table has fifteen columns, Comments first,
-then Key, Type, Summary, Status, Category, Priority, Assignee, Reporter, Labels, Parent,
-Created, Updated, Due, Resolution; every heading but Comments sorts (keys numerically, `None`
-last), done rows are dimmed on their stripe, and the filters (a text box on key or summary and
-read-only drop-downs for Status, Category, Type, Priority and Assignee, with `(none)` for a
-blank value) are applied locally to the last fetch, never as a new query. Double-click or
-`Return` opens the issue in the browser; `[Comments]` in the first column, or `c` on the focused
-row, opens the **comments window** for that ticket: one `Toplevel` per key, title
-`<KEY> — Comments`, newest comment at the top, each body a read-only text box you can copy
-from, Refresh and Close, `Escape` closes, `F5` refreshes (also on a worker thread; its label says
-"Fetching comments …" meanwhile). A failed fetch (no session, offline)
-is a line in the window's own label and in the status bar, never a dialog; the rows already
-shown stay.
+Two read-only fetches held in memory, never stored, never audited. The window that showed them
+(the JIRA Live Data screen of 0.5.0 and its comments window) was removed in 0.8.1 by the owner's
+instruction; asi_kletz keeps its window, and the row shape below is the convention both tools
+share (`docs/jira-live-data-plan.md`, section 3.1).
 
 ```powershell
 asi-dewey jira live --jql "project = HWL AND type = Bug"   # one-off JQL
@@ -584,7 +576,6 @@ src/asi_dewey/
   automation/         CLI (with forwarding), EventBus (seq), script runner, server.py (the loopback automation
                       server a window owns) and session.py (the session file the CLI reads to find it)
   gui/                tkinter: MainWindow, ScreenFactory, WidgetFactory, entity/dashboard/transfer/generate screens,
-                      jira_live_screen.py (JIRA Live Data) and jira_comments_window.py (one Toplevel per ticket),
                       theme.py (ThemeFactory, GridTheme) and palettes.py (the family palette, pure data)
 tests/                pytest suite (schema, core, transfer, generate, jira, locks, CLI, GUI, theme, server, session);
                       fixtures/dewey-0.7.4.db, a small 0.7.4 database for the open-and-stamp test

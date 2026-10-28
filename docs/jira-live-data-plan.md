@@ -2,6 +2,9 @@
 
 **Status:** Implemented 2026-10-27 (asi_dewey 0.5.0); deviations recorded by the implementing agent in the CHANGELOG entry.
 0.7.3 (2026-10-28) moved the fetch off the Tk thread and flipped `jira_live_autofetch` to `false`; see §8.
+**Removed from the Dewey window in 0.8.1** (owner's instruction, 2026-10-28): the screen, the comments window
+and `jira_live_autofetch` are gone; `jira live`, `jira comments` and the row convention of §3.1 stay, and
+asi_kletz keeps its window. See `CHANGELOG.md`, section [0.8.1].
 **Written:** 2026-10-27
 **Owner:** FuSa engineer
 **Target version:** asi_dewey 0.5.0 (after the 0.4.0 window prune, before the family lock at 0.6.0)

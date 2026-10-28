@@ -121,9 +121,13 @@ class EntityService:
 
         Identity first (docs/hidden-identity-plan.md, 3.1): in every mode a row whose ``uid`` is
         already in the table updates that row, whatever its ``id`` in the file; otherwise, in merge
-        mode, a row whose ``id`` exists updates that row by id and the stored uid stays; otherwise
-        the row is inserted keeping the file's uid when it has one (and its id in merge mode), with
-        a fresh uid when it has none (a 0.7.x file). ``replace`` wipes first and keeps the file's uids.
+        mode, a row whose ``id`` exists updates that row by id and takes the file's uid when the file
+        has one (the one deliberate identity reconciliation: a Kletz dump merged here hands the cached
+        rows Kletz's uids; a warning names old and new; no other row holds that uid, or the match by
+        uid above would have won, so the unique index never trips); otherwise the row is inserted
+        keeping the file's uid when it has one (and its id in merge mode), with a fresh uid when it
+        has none (a 0.7.x file). ``replace`` wipes first and keeps the file's uids. A workbook sheet
+        carries no ``id`` column, so for a workbook the reconciliation is ``replace``.
         Rows are validated one by one; a bad row is reported and skipped, never fatal.
         """
         if mode not in LOAD_MODES:
@@ -153,9 +157,12 @@ class EntityService:
                     self.repo.update(int(known["id"]), clean)
                     summary["updated"] += 1
                 elif mode == "merge" and row_id is not None and self.repo.exists(int(row_id)):
-                    if uid:
+                    stored = self.repo.get(int(row_id))
+                    if uid and stored is not None and uid != stored.get(UID_FIELD):
+                        clean[UID_FIELD] = uid  # plan 3.1: the file's identity wins on a merge by id
                         summary["warnings"].append(
-                            f"row {index}: matched {self.schema.name} {row_id} by id; its uid is kept, not {uid}"
+                            f"row {index}: {self.schema.name} {row_id} takes the file's uid {uid}"
+                            f" (was {stored.get(UID_FIELD)})"
                         )
                     self.repo.update(int(row_id), clean)
                     summary["updated"] += 1

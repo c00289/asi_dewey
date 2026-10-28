@@ -168,22 +168,47 @@ def test_a_0_7_x_dump_without_uids_imports_and_the_rows_are_stamped(seeded, tmp_
     assert all(UID_PATTERN.match(r["uid"]) for r in seeded.execute("list", entity="fact").data)
 
 
-def test_merge_by_id_keeps_the_stored_uid_and_warns(seeded, tmp_path):
-    row = seeded.execute("list", entity="fact").data[0]
-    foreign = new_uid()
-    dump = tmp_path / "foreign.json"
-    dump.write_text(json.dumps({"entity": "fact", "rows": [{"id": row["id"], "name": "renamed", "uid": foreign}]}),
-                    encoding="utf-8")
+def test_merge_by_id_adopts_the_file_uid_and_warns(seeded, tmp_path):
+    """Plan 3.1 as both tools read it: a dump merged by id hands the rows the file's uids (a Kletz dump
+    gives the cached plan rows Kletz's identity); `update` stays immutable, a load is the reconciliation."""
+    before = {r["id"]: r for r in seeded.execute("list", entity="fact").data}
+    fresh = {row_id: new_uid() for row_id in before}
+    dump = tmp_path / "kletz.json"
+    dump.write_text(json.dumps({
+        "entity": "fact",
+        "rows": [{"id": i, "name": r["name"] + " (Kletz)", "uid": fresh[i]} for i, r in before.items()],
+    }), encoding="utf-8")
     result = seeded.execute("load", path=str(dump), mode="merge")
-    assert result.ok and result.data["entities"]["fact"]["updated"] == 1
-    assert result.warnings == [f"fact: row 1: matched fact {row['id']} by id; its uid is kept, not {foreign}"]
-    after = seeded.execute("get", entity="fact", id=row["id"]).data
-    assert after["name"] == "renamed" and after["uid"] == row["uid"]
+    assert result.ok, result.errors
+    assert result.data["entities"]["fact"] == {"inserted": 0, "updated": 2, "deleted": 0, "skipped": 0}
+    assert sorted(result.warnings) == sorted(
+        f"fact: row {n}: fact {i} takes the file's uid {fresh[i]} (was {before[i]['uid']})"
+        for n, i in enumerate(before, start=1)
+    )
+    after = {r["id"]: r for r in seeded.execute("list", entity="fact").data}
+    assert {i: r["uid"] for i, r in after.items()} == fresh
+    assert all(r["name"].endswith("(Kletz)") for r in after.values())
+    assert seeded.execute("count", entity="fact").data["count"] == 2
+    # a second merge of the same dump is a match by uid: no warning, nothing renamed twice
+    again = seeded.execute("load", path=str(dump), mode="merge")
+    assert again.ok and again.warnings == [] and again.data["entities"]["fact"]["updated"] == 2
+    # the file's uid in another row's hands: the match by uid wins, the id is not consulted, no index trips
+    other = tmp_path / "clash.json"
+    other.write_text(json.dumps({"entity": "fact", "rows": [{"id": 1, "name": "by uid", "uid": fresh[2]}]}),
+                     encoding="utf-8")
+    clash = seeded.execute("load", path=str(other), mode="merge")
+    assert clash.ok and clash.warnings == [] and clash.data["entities"]["fact"]["updated"] == 1
+    rows = {r["id"]: r for r in seeded.execute("list", entity="fact").data}
+    assert rows[2]["name"] == "by uid" and rows[2]["uid"] == fresh[2] and rows[1]["uid"] == fresh[1]
+    # `update` is still immutable: a load is the one way a uid changes hands
+    assert not seeded.execute("update", entity="fact", id=1, set=[f"uid={new_uid()}"]).ok
 
 
 def test_a_kletz_plan_sheet_with_hidden_uids_gives_the_cached_rows_those_uids(brain, tmp_path):
     from openpyxl import Workbook
 
+    # a cached copy made before any Kletz file arrived: Dewey's own uid, which the sheet replaces
+    cached = brain.execute("create", entity="safety_plan_row", data={"order": 1, "deliverable": "Safety Plan"}).data
     schema = brain.registry.get("safety_plan_row")
     headers = [spec.header for spec in schema.visible_fields] + ["uid"]
     assert len(headers) == 64
@@ -205,9 +230,11 @@ def test_a_kletz_plan_sheet_with_hidden_uids_gives_the_cached_rows_those_uids(br
     sheet(first, ["Safety Plan", "HARA"])
     result = brain.execute("import", format="excel", path=str(first), mode="replace", entity="safety_plan_row")
     assert result.ok, result.errors
-    assert result.data["entities"]["safety_plan_row"]["inserted"] == 2 and result.warnings == []
+    assert result.data["entities"]["safety_plan_row"] == {"inserted": 2, "updated": 0, "deleted": 1, "skipped": 0}
+    assert result.warnings == []
     rows = brain.execute("list", entity="safety_plan_row").data
     assert [r["uid"] for r in rows] == uids and [r["deliverable"] for r in rows] == ["Safety Plan", "HARA"]
+    assert cached["uid"] not in {r["uid"] for r in rows}  # a sheet has no id column: replace is its reconciliation
     # a newer dump of the same plan updates the cached rows in place instead of duplicating them
     second = tmp_path / "kletz-later.xlsx"
     sheet(second, ["Safety Plan (rev B)", "HARA"])
