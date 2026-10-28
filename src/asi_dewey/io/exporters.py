@@ -145,6 +145,8 @@ class ExcelExporter(Exporter):
                 if spec.type is FieldType.BOOL:
                     base = min(base, 14)
                 ws.column_dimensions[get_column_letter(col)].width = max(6, min(base + 2, 62))
+                if spec.hidden:  # in the file, so the sheet round-trips; not on the screen (plan 3.1)
+                    ws.column_dimensions[get_column_letter(col)].hidden = True
                 if spec.lookup:
                     values = brain.lookups.get(spec.lookup, ())
                     formula = '"' + ",".join(values) + '"'

@@ -193,6 +193,21 @@ def test_events_since(window, seeded):
     assert code == 400 and not res["ok"]
 
 
+def test_execute_resolves_a_uid_where_an_id_is_expected(window, seeded):
+    row = seeded.execute("list", entity="fact").data[0]
+    body = {"verb": "get", "args": {"entity": "fact", "id": row["uid"]}, "actor": "agent"}
+    code, res = call(window, "POST", "/execute", body)
+    assert code == 200 and res["ok"] and res["data"] == row
+    body = {"verb": "update", "args": {"entity": "fact", "id": row["uid"], "set": ["text=via uid"]}}
+    code, res = call(window, "POST", "/execute", body)
+    assert code == 200 and res["ok"] and res["data"]["id"] == row["id"] and res["data"]["text"] == "via uid"
+    body = {"verb": "delete", "args": {"entity": "fact", "id": row["uid"]}}
+    code, res = call(window, "POST", "/execute", body)
+    assert code == 200 and res["ok"] and res["data"] == {"entity": "fact", "deleted": row["id"]}
+    code, res = call(window, "POST", "/execute", body)
+    assert code == 200 and not res["ok"] and res["errors"] == [f"fact uid {row['uid']} not found"]
+
+
 # -- puppeting -----------------------------------------------------------------------------------
 def test_screen_and_screens(window):
     code, res = call(window, "POST", "/screen", {"show": "entity:task"})

@@ -132,3 +132,45 @@ def test_session_verb_is_registered_and_opens_no_brain(hold, tmp_path, capsys):
     assert code == 3  # a verb that needs a Brain is still refused, and no session means no forwarding
     assert res["errors"][0].endswith("--no-server or ASI_DEWEY_AUTOMATION=off")
     assert not (tmp_path / "cli.db").exists()
+
+
+def test_get_update_delete_accept_a_uid(tmp_path, capsys):
+    from asi_dewey.schema import new_uid
+
+    db = str(tmp_path / "cli.db")
+    code, res = run(capsys, "--db", db, "create", "fact", "--set", "name=hello")
+    assert code == 0
+    row_id, uid = res["data"]["id"], res["data"]["uid"]
+
+    code, res = run(capsys, "--db", db, "get", "fact", uid)
+    assert code == 0 and res["data"]["id"] == row_id and res["data"]["name"] == "hello"
+    code, res = run(capsys, "--db", db, "get", "fact", "{" + uid.upper() + "}")
+    assert code == 0 and res["data"]["id"] == row_id
+    code, res = run(capsys, "--db", db, "get", "fact", str(row_id))
+    assert code == 0 and res["data"]["uid"] == uid
+
+    code, res = run(capsys, "--db", db, "update", "fact", uid, "--set", "text=by uid")
+    assert code == 0 and res["data"]["text"] == "by uid" and res["data"]["uid"] == uid
+    code, res = run(capsys, "--db", db, "update", "fact", uid, "--set", f"uid={new_uid()}")
+    assert code == 1 and res["errors"] == ["uid is immutable"]
+    code, res = run(capsys, "--db", db, "update", "fact", str(row_id), "--set", f"uid={uid}")  # the same: a no-op
+    assert code == 0 and res["data"]["uid"] == uid
+
+    code, res = run(capsys, "--db", db, "list", "fact", "--filter", f"uid={uid}")
+    assert code == 0 and [r["id"] for r in res["data"]] == [row_id]
+    code, res = run(capsys, "--db", db, "count", "fact", "--filter", f"uid={new_uid()}")
+    assert code == 0 and res["data"]["count"] == 0
+
+    unknown = new_uid()
+    code, res = run(capsys, "--db", db, "get", "fact", unknown)
+    assert code == 1 and res["errors"] == [f"fact uid {unknown} not found"]
+    code, res = run(capsys, "--db", db, "delete", "fact", "not-a-ref")
+    assert code == 1 and "neither an id nor a uid" in res["errors"][0]
+
+    code, res = run(capsys, "--db", db, "delete", "fact", uid)
+    assert code == 0 and res["data"] == {"entity": "fact", "deleted": row_id}
+    code, res = run(capsys, "--db", db, "count", "fact")
+    assert res["data"]["count"] == 0
+    code, res = run(capsys, "--db", db, "schema")
+    get_args = next(c for c in res["data"]["commands"] if c["verb"] == "get")["arguments"]
+    assert [a["type"] for a in get_args] == ["str", "ref"]
