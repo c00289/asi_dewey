@@ -168,6 +168,8 @@ class WidgetFactory:
         return widget
 
     def create(self, master: tk.Misc, spec: FieldSpec, **options: Any) -> FieldWidget:
+        if spec.hidden:
+            raise ValueError(f"{spec.name} is a hidden field: it has no widget (the form skips it)")
         if spec.type is FieldType.INT:
             options.setdefault("width", 10)
         return self._registry[spec.type](master, spec, self.lookups, **options)

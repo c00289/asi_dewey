@@ -1,4 +1,11 @@
-"""EntityScreen: the generic table-plus-form page produced for every entity from its schema."""
+"""EntityScreen: the generic table-plus-form page produced for every entity from its schema.
+
+The table shows the entity's visible fields minus ``order`` (0.8.0, docs/hidden-identity-plan.md
+3.3): no ``id`` column, no ``order`` column, no hidden field. The tree iids are still the ids, the
+details frame names the selected row (``Task details · row 2``) and the status bar still says
+``Task 2 selected``, so the handle a command needs is on screen without a column. ``order`` stays
+editable in the form and stays the default sort.
+"""
 
 from __future__ import annotations
 
@@ -40,9 +47,11 @@ class EntityScreen(Screen):
 
     # -- layout ---------------------------------------------------------
     def build(self) -> None:
-        flags = [f for f in self.schema.fields if f.is_flag]
-        self.columns = ["id"] + [
-            f.name for f in self.schema.fields if not f.is_flag or len(flags) <= MAX_FLAG_COLUMNS
+        visible = self.schema.visible_fields
+        flags = [f for f in visible if f.is_flag]
+        self.columns = [
+            f.name for f in visible
+            if f.name != "order" and (not f.is_flag or len(flags) <= MAX_FLAG_COLUMNS)
         ]
 
         toolbar = ttk.Frame(self)
@@ -73,10 +82,9 @@ class EntityScreen(Screen):
         table.rowconfigure(0, weight=1)
         table.columnconfigure(0, weight=1)
         for name in self.columns:
-            spec = None if name == "id" else self.schema.field(name)
-            header = "id" if spec is None else spec.header
-            self.tree.heading(name, text=header, command=lambda n=name: self.sort_by(n))
-            if spec is None or spec.type is FieldType.INT:
+            spec = self.schema.field(name)
+            self.tree.heading(name, text=spec.header, command=lambda n=name: self.sort_by(n))
+            if spec.type is FieldType.INT:
                 width = 60
             elif spec.is_flag:
                 width = 50
@@ -86,29 +94,37 @@ class EntityScreen(Screen):
                 width = 100
             else:
                 width = 180
-            stretch = spec is not None and spec.type is FieldType.MULTILINE
+            stretch = spec.type is FieldType.MULTILINE
             self.tree.column(name, width=width, minwidth=40, stretch=stretch)  # fit_columns has the last word
         self.tree.bind("<<TreeviewSelect>>", self._on_select)
         # a URL cell is a link: a click opens it (and selects the row), the pointer is a hand over it
-        self.url_columns = [c for c in self.columns if c != "id" and self.schema.field(c).type is FieldType.URL]
+        self.url_columns = [c for c in self.columns if self.schema.field(c).type is FieldType.URL]
         self._cursor = ""
         if self.url_columns:
             self.tree.bind("<Button-1>", self._on_click)
             self.tree.bind("<Motion>", self._on_motion)
         paned.add(table, weight=3)
 
-        form_box = ttk.LabelFrame(paned, text=f"{self.schema.label} details")
-        self.form = ScrollableFrame(form_box)
+        self.form_box = ttk.LabelFrame(paned, text=self.details_title())
+        self.form = ScrollableFrame(self.form_box)
         self.form.pack(fill="both", expand=True)
         self._build_form(self.form.inner)
-        paned.add(form_box, weight=2)
+        paned.add(self.form_box, weight=2)
+
+    def details_title(self, row_id: int | None = None, *, copy: bool = False) -> str:
+        """The details frame's title: ``Task details``, ``Task details · row 2`` once a row is selected,
+        ``Task details · copy of row 2`` while a duplicate waits to be saved."""
+        title = f"{self.schema.label} details"
+        if row_id is None:
+            return title
+        return f"{title} · {'copy of row' if copy else 'row'} {row_id}"
 
     def _build_form(self, parent: ttk.Frame) -> None:
         factory = WidgetFactory(self.brain.lookups)
         parent.columnconfigure(1, weight=1)
         row = 0
         for spec in self.schema.fields:
-            if spec.group:
+            if spec.group or spec.hidden:  # a hidden field has no widget; ``order`` stays
                 continue
             ttk.Label(parent, text=spec.header + (" *" if spec.required else "")).grid(
                 row=row, column=0, sticky="ne", padx=(4, 8), pady=3
@@ -212,7 +228,7 @@ class EntityScreen(Screen):
         self.tree.delete(*self.tree.get_children())
         shown = self._visible_rows()
         for r in shown:
-            values = [cell_text(None if c == "id" else self.schema.field(c), r.get(c)) for c in self.columns]
+            values = [cell_text(self.schema.field(c), r.get(c)) for c in self.columns]
             self.tree.insert("", "end", iid=str(r["id"]), values=values)
         self.window.theme.stripe(self.tree)
         fit_columns(self.tree, self._lookup_values())
@@ -253,6 +269,7 @@ class EntityScreen(Screen):
         self.selected_id = row_id
         for name, widget in self.widgets.items():
             widget.set(row.get(name))
+        self.form_box.configure(text=self.details_title(row_id))
         self.window.set_status(f"{self.schema.label} {row_id} selected")
 
     def form_data(self) -> dict[str, Any]:
@@ -262,6 +279,7 @@ class EntityScreen(Screen):
     def new(self) -> None:
         self.selected_id = None
         self.tree.selection_remove(*self.tree.selection())
+        self.form_box.configure(text=self.details_title())
         for widget in self.widgets.values():
             widget.clear()
         if self.widgets:
@@ -301,8 +319,10 @@ class EntityScreen(Screen):
         if self.selected_id is None:
             self.window.set_status("Select a row to duplicate")
             return
+        source = self.selected_id
         self.selected_id = None
         self.tree.selection_remove(*self.tree.selection())
+        self.form_box.configure(text=self.details_title(source, copy=True))
         if "order" in self.widgets:
             self.widgets["order"].clear()
         self.window.set_status("Duplicating: edit the form and press Save to create the copy")

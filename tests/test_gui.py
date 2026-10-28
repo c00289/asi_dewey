@@ -94,6 +94,7 @@ def test_search_sort_and_select(window):
     assert screen.by_id[first]["order"] == 2
     screen.select(first)
     assert screen.widgets["name"].get() == "Product"
+    assert window.status_text() == f"Fact {first} selected"
     screen.duplicate()
     assert screen.selected_id is None and screen.widgets["order"].get() is None
 
@@ -198,6 +199,8 @@ def test_widget_factory_round_trips(window, seeded):
     enum = factory.create(window, task.field("task_class"))
     assert list(enum.combo["values"]) == list(seeded.lookups["task_class"])
     assert task.field("task_class").type is FieldType.ENUM
+    with pytest.raises(ValueError, match="uid is a hidden field"):  # no widget for a hidden field (0.8.0)
+        factory.create(window, task.field("uid"))
 
 
 def _point_at(monkeypatch, screen, iid: str, column: str):
@@ -1118,3 +1121,85 @@ def test_dashboard_columns_fit_their_text(window):
     assert dash.audit.get_children()  # the seeded creates are in the audit tail: real cells were measured
     for tree in (dash.jira, dash.tasks, dash.audit):
         _assert_fitted(tree)
+
+
+# -- the hidden identity in the window (0.8.0, docs/hidden-identity-plan.md, 3.3) ----------------
+def _trees(widget):
+    """Every ``ttk.Treeview`` under ``widget``, depth first."""
+    found = []
+    for child in widget.winfo_children():
+        if isinstance(child, ttk.Treeview):
+            found.append(child)
+        found.extend(_trees(child))
+    return found
+
+
+def test_no_table_on_any_screen_has_an_id_order_or_uid_column(window):
+    seen = 0
+    for key, _ in window.factory.items():
+        screen = window.show(key)
+        trees = _trees(screen)
+        if key.startswith("entity:") or key in ("dashboard", "jira_live"):
+            assert trees, key
+        for tree in trees:
+            columns = set(tree.tk.splitlist(tree["columns"]))
+            assert not columns & {"id", "order", "uid"}, (key, columns)
+            seen += 1
+    assert seen >= 11  # seven entity tables, three dashboard tables, the JIRA Live Data table
+    dash = window.show("dashboard")
+    assert tuple(dash.audit["columns"]) == ("ts", "actor", "action", "entity", "entity_id")  # the trace stays
+
+
+def test_entity_screen_columns_are_the_visible_fields_minus_order(window, seeded):
+    from asi_dewey.gui.entity_screen import MAX_FLAG_COLUMNS, EntityScreen
+
+    assert MAX_FLAG_COLUMNS == 8
+    for schema in seeded.registry:
+        key = f"entity:{schema.name}"
+        screen = window.show(key) if key in window.factory else EntityScreen(window, window, schema)
+        flags = [f for f in schema.visible_fields if f.is_flag]
+        expected = [
+            f.name for f in schema.visible_fields
+            if f.name != "order" and (not f.is_flag or len(flags) <= MAX_FLAG_COLUMNS)
+        ]
+        assert screen.columns == expected, schema.name
+        assert tuple(screen.tree.tk.splitlist(screen.tree["columns"])) == tuple(expected)
+        assert "id" not in screen.columns and "uid" not in screen.columns and "order" not in screen.columns
+        assert [screen.tree.heading(c, "text") for c in screen.columns] == [schema.field(c).header for c in expected]
+        assert "uid" not in screen.widgets and ("order" in screen.widgets) == schema.has("order")
+        assert set(screen.widgets) == {f.name for f in schema.visible_fields}
+        if key not in window.factory:  # the two HIDDEN_ENTITY_SCREENS, built here only to check the rule
+            assert schema.name in ("jira_ticket", "safety_plan_row")
+            if schema.name == "safety_plan_row":
+                assert len(flags) > MAX_FLAG_COLUMNS and not any(schema.field(c).is_flag for c in screen.columns)
+            screen.destroy()
+    link = window.show("entity:link")
+    assert link.columns == ["link_class", "name", "url"] and link.url_columns == ["url"]
+    fact = window.show("entity:fact")
+    assert fact.columns == ["name", "text"] and fact.sort_key is None
+    rows = [fact.by_id[int(i)]["order"] for i in fact.tree.get_children()]
+    assert rows == sorted(rows)  # order is still the default sort, without a column
+
+
+def test_details_title_names_the_selected_row(window, seeded):
+    screen = window.show("entity:fact")
+    assert screen.form_box.cget("text") == "Fact details"
+    first = int(screen.tree.get_children()[0])
+    screen.select(first)
+    assert screen.form_box.cget("text") == f"Fact details · row {first}"
+    assert window.status_text() == f"Fact {first} selected"
+    screen.duplicate()
+    assert screen.form_box.cget("text") == f"Fact details · copy of row {first}" and screen.selected_id is None
+    screen.widgets["name"].set("Copy")
+    screen.save()
+    copy = screen.selected_id
+    assert copy not in (None, first) and screen.form_box.cget("text") == f"Fact details · row {copy}"
+    uids = {seeded.execute("get", entity="fact", id=i).data["uid"] for i in (first, copy)}
+    assert len(uids) == 2  # a duplicate is a new row, so a new uid
+    screen.new()
+    assert screen.form_box.cget("text") == "Fact details" and screen.selected_id is None
+    screen.select(copy)
+    screen.delete()
+    assert screen.form_box.cget("text") == "Fact details" and f"Deleted fact {copy}" == window.status_text()
+    # the tree iids are still the ids
+    assert {int(i) for i in screen.tree.get_children()} == {r["id"] for r in seeded.execute("list", entity="fact").data}

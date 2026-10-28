@@ -40,6 +40,8 @@ class DashboardScreen(Screen):
 
         lower = ttk.PanedWindow(self, orient="horizontal")
         lower.pack(fill="both", expand=True)
+        # no table shows an id or an order column (docs/hidden-identity-plan.md, 3.3); the audit
+        # table keeps entity_id, which is the trace of a change, not a vestige
         self.jira = self._table(lower, "Open Jira tickets", ("name", "url"), (360, 300))
         self.tasks = self._table(
             lower, f"Tasks ending within {DUE_WINDOW_DAYS} days", ("name", "end", "task_class"), (300, 90, 110)
