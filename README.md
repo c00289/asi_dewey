@@ -3,12 +3,23 @@
 One of the [ASI FuSa tools](https://github.com/c00289/c00289/blob/main/README.md) by Roy Mendoza; the master README there lists every sibling.
 
 A functional-safety (FuSa) working-knowledge API for the Wheel Loader programme, with a
-command line and a tkinter desktop window on top. Version **0.7.4**, alpha. Named after
+command line and a tkinter desktop window on top. Version **0.8.0**, alpha. Named after
 Melvil Dewey: one classification scheme, many views.
 
 The idea, in one sentence: a database is the single source of truth, the Excel workbook
 is a generated *view* of it, and everything a human can do through a front end an AI agent
 can do through the same commands.
+
+## What is in 0.8.0
+
+- **Every row has a hidden `uid`**, assigned once on creation, never shown, never changed, in every
+  file the tool writes and honoured by every import (the JSON dump as a key, the workbook as a
+  hidden last column of every sheet). A 0.7.x database opens as 0.8.0 with every row stamped and
+  nothing else changed (schema version 2). `get`, `update` and `delete` accept a uid where an id
+  is expected; see [Identity](#identity). Same convention in asi_kletz.
+- **No table shows `id` or `order`.** The entity screens show the fields; the details frame says
+  which row is selected (`Task details · row 2`) and the status bar still says `Task 2 selected`.
+  `order` stays in the form and stays the default sort.
 
 ## What is in 0.7.4
 
@@ -115,8 +126,9 @@ can do through the same commands.
 - **Desktop window** (`asi-dewey gui` or `asi-dewey-gui`): navigation on the left, one screen
   at a time on the right. A Dashboard (row counts, open Jira tickets, tasks ending this week,
   recent changes), a generic table-plus-form screen for every entity generated from its
-  schema, a Safety Plan Matrix where a click toggles a flag (the Safety Plan Matrix screen was
-  removed in 0.4.0), and an Export / Import screen.
+  schema (since 0.8.0 its table shows no `id` or `order` column and the details frame names
+  the selected row), a Safety Plan Matrix where a click toggles a flag (the Safety Plan Matrix
+  screen was removed in 0.4.0), and an Export / Import screen.
   Ctrl+N new, Ctrl+S save, Ctrl+E export workbook, F5 refresh. The window only ever calls
   `Brain.execute` with actor `gui`, so the audit log records it like any other actor, and the
   event bus refreshes the open screen when the CLI or an agent changes data on the same Brain.
@@ -337,6 +349,19 @@ with Brain("dewey.db") as brain:
 
     brain.events.subscribe("*", lambda topic, event: print(topic, event["entity"]))
 ```
+
+### Identity
+
+Every row has two names. The integer `id` is the handle: it is typed in commands
+(`update task 2 …`), it is the row iid of every tree, the audit log's `entity_id` and the status
+bar's "Task 2 selected". The `uid` is the trace: a lowercase UUID4 with dashes, assigned once by
+`create`, never shown in a table or a form, never changed, written to every file the tool writes
+(a key of every row in the JSON dump, a hidden last column of every workbook sheet) and honoured
+by every import, so a row keeps its identity across a dump, a workbook edited in Excel or a
+Kletz plan imported here. Wherever a command takes an id it also takes a uid: `get task 2` and
+`get task 3f1c…` are the same row; `update task <uid> --set uid=…` fails with `uid is immutable`;
+`list task --filter uid=…` works as for any field. The convention is shared with asi_kletz by name
+(`docs/hidden-identity-plan.md`, section 3.1).
 
 ## Scripts
 
@@ -561,7 +586,8 @@ src/asi_dewey/
   gui/                tkinter: MainWindow, ScreenFactory, WidgetFactory, entity/dashboard/transfer/generate screens,
                       jira_live_screen.py (JIRA Live Data) and jira_comments_window.py (one Toplevel per ticket),
                       theme.py (ThemeFactory, GridTheme) and palettes.py (the family palette, pure data)
-tests/                pytest suite (schema, core, transfer, generate, jira, locks, CLI, GUI, theme, server, session)
+tests/                pytest suite (schema, core, transfer, generate, jira, locks, CLI, GUI, theme, server, session);
+                      fixtures/dewey-0.7.4.db, a small 0.7.4 database for the open-and-stamp test
 ```
 
 ## Tests
@@ -586,7 +612,8 @@ The files, one per layer: `test_schema.py`, `test_core.py`, `test_transfer.py`, 
 `test_jira.py` (asi_hopper's replay fixtures; skipped when the sibling is not checked out),
 `test_locks.py`, `test_cli.py`, `test_gui.py`, `test_theme.py`, `test_server.py` and
 `test_session.py`; `conftest.py` holds the isolation fixture and the `brain`, `seeded` and `hold`
-fixtures.
+fixtures. `test_core.py` opens a copy of `tests/fixtures/dewey-0.7.4.db` (never the file itself) to
+check that a 0.7.x database opens as 0.8.0 with every row stamped and nothing else changed.
 
 ## Adding an entity
 
@@ -606,4 +633,6 @@ register_entity(EntitySchema(
 ))
 ```
 
-Import the module before creating a `Brain`; the next `Brain(...)` adds the table.
+Import the module before creating a `Brain`; the next `Brain(...)` adds the table. Every entity
+ends with the hidden `uid` field: `EntitySchema` appends it, so a declaration never names it (one
+that does must put it last, hidden, as `TEXT`).

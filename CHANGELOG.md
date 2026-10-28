@@ -11,6 +11,100 @@ All notable changes to ASI Dewey are recorded here. The format follows
 - Excel import diff preview; `fill` / `submit` / `cancel` puppeting of a screen's form; a
   `View > Automation` submenu or screen; date picker widget.
 
+## [0.8.0] - 2026-10-28
+
+Every row of every entity carries a hidden `uid`, and no table shows `id` or `order`.
+The convention is shared with asi_kletz by name, never as code (`docs/hidden-identity-plan.md`,
+section 3.1), decided by the owner on 2026-10-28. Schema version 1 → 2: a 0.7.x `dewey.db` opens
+as 0.8.0 with every row identified and nothing else changed.
+
+### Added
+- **`uid` on every entity**: the last field, `FieldType.TEXT`, header `uid`, `hidden=True`, the
+  canonical lowercase UUID4 with dashes (`new_uid`, `UID_PATTERN`, `normalise_uid` in
+  `schema/fields.py`). `EntityService.create` assigns it once; `update` with another value fails
+  with `uid is immutable` (the same value is a no-op); a second row with the same uid is refused
+  by the unique index `ix_<table>_uid` (`ensure_schema`) and reported as `uid … is already used by
+  another row`, a `Result`, not a crash. Coercion accepts the canonical form, normalises upper
+  case and braces, and rejects anything else naming the field (`uid: 'nope' is not a uid …`).
+- **`FieldSpec.hidden`** and **`EntitySchema.visible_fields`**: a hidden field has no widget, no
+  column, no `fit_columns` candidate and no place in a diagram (`schema_map` counts visible
+  fields); it is written to and read from every file. Only `uid` is hidden.
+- **Stamped on open**: `Storage.stamp_uids`, called by `Brain.__init__` right after `ensure_schema`
+  and reported as `brain.migration["uids_stamped"]`, gives every row whose uid is NULL or empty a
+  fresh one, one `UPDATE … WHERE id = ?` per row in one transaction, `updated_at` untouched,
+  audited as `stamp_uids` with the count (actor `system`) once per table that had rows to stamp.
+  A second open stamps nothing and audits nothing.
+- **In files**: the JSON dump carries `uid` like any field; the workbook writes it as the last
+  column of every sheet, headed `uid`, with `column_dimensions[letter].hidden = True`, so the
+  sheet reads as before and still round-trips; the import maps it by header like any field.
+  `load_rows` matches by uid first, in every mode: a row whose uid is in the table updates that
+  row whatever its id in the file; otherwise, in merge mode, a row whose id exists updates that
+  row by id and keeps the stored uid (a warning names the uid the file had, when it had one);
+  otherwise the row is inserted keeping the file's uid when it has one (and its id in merge mode),
+  with a fresh uid when it has none (a 0.7.x file). `replace` wipes first and keeps the file's
+  uids. So a Kletz dump or workbook imported here gives the cached `safety_plan_row` rows Kletz's
+  uids, and a later import of a newer dump updates them in place instead of duplicating them.
+- **A uid where an id is expected**: `get`, `update` and `delete` take a `ref` (argument type
+  `ref`): all digits is an id; a uid, in any case, with or without braces, is resolved through
+  `EntityService.resolve` and `SqlRepository.get_by_uid`; an unknown uid is `NotFound`
+  (`fact uid … not found`); anything else is `neither an id nor a uid`. The automation server's
+  `POST /execute` runs the same verbs through the same dispatcher, so an agent can send
+  `{"verb": "get", "args": {"entity": "task", "id": "<uid>"}}`. `list --filter uid=…` works as it
+  does for any field.
+- `tests/fixtures/dewey-0.7.4.db`: a small 0.7.4 database (two facts, one link, one QMS
+  document) made with the 0.7.4 code for the open-and-stamp test; `.gitignore` admits
+  `tests/fixtures/*.db`.
+
+### Changed
+- **The seven entity screens show no `id` and no `order` column.** `EntityScreen.columns` is the
+  entity's visible fields minus `order`, with the `MAX_FLAG_COLUMNS` rule as before. The tree
+  iids are still the ids, `order` stays editable in the form and stays the default sort, and the
+  status bar still says `Fact 2 selected`. The details frame names the row: `Fact details · row 2`
+  once a row is selected, `Fact details · copy of row 2` after Duplicate, `Fact details` after
+  New. The Dashboard tables were verified against plan 3.3: none had an `id` or `order` column
+  (`gui/dashboard.py`), and the Recent changes table keeps `entity_id`, which is the trace of a
+  change, not a vestige. JIRA Live Data is unchanged: the Jira key is its identity.
+- The form skips hidden fields; `WidgetFactory.create` raises `ValueError` for one.
+- `load … --mode append` of a file whose rows the table already knows by uid updates them instead
+  of inserting copies (the rule above); a file without uids appends new rows as before.
+- `SCHEMA_VERSION = 2`; the registry fingerprint changes, so `schema_migrations` gains a row on
+  the first open of an existing database.
+
+### Fixed
+- The compare links at the foot of this file lacked `[0.7.4]`.
+
+### Deviations from the plan (`docs/hidden-identity-plan.md`)
+- **Where `uid` is declared.** The plan puts it on each of the nine entities in
+  `schema/definitions.py` (sections 4 and 5). It is appended by `EntitySchema.__post_init__`
+  instead (`uid_field()` in `schema/fields.py`): an entity registered by a caller, as in the
+  README's "Adding an entity", carries it too and cannot forget it. A declaration that names
+  `uid` must put it last, hidden, as `TEXT`, or it is a `ValueError`. Section 3.1 is unchanged.
+- **The audit of `stamp_uids`.** The plan says "audited once per table"; the entry is written only
+  for a table that had rows to stamp, otherwise a fresh database and every later open would write
+  nine empty entries. The plan did not name the actor; it is `system`.
+- **The server's row endpoints.** The plan (sections 3.1, 4 and 5) has them take the same `ref`.
+  The server has no row endpoints: `POST /execute` runs the dispatcher, so the change to `get`,
+  `update` and `delete` covers it. `automation/server.py` is untouched;
+  `test_execute_resolves_a_uid_where_an_id_is_expected` pins the behaviour.
+- **Merge by id with a foreign uid.** The plan is silent on a file row whose uid is unknown but
+  whose id exists (merge mode). The row is updated by id, the stored uid is kept (it is
+  immutable) and the load reports a warning naming the uid the file had.
+- **`schema_map`** counts visible fields (`generate/diagrams.py`), following section 3.2; the file
+  is not in the plan's section 5 list.
+- **The details title after Duplicate** says `… · copy of row 2`, an extension of section 3.3's
+  `Task details · row 2`, so the source of the copy stays on screen until it is saved.
+
+### Tests
+- 198 → 215. `test_schema.py`: every entity ends with a hidden `uid`, a declared `uid` must be
+  last/hidden/TEXT, coercion. `test_core.py`: `create` assigns or keeps, `update` refuses, two rows
+  cannot share, `get_by_uid` and `resolve`, and the fixture database opened by 0.8.0 (columns,
+  unique indexes, every row stamped, counts audited, nothing else changed, a second open stamps
+  nothing). `test_transfer.py`: 64 headers with a hidden last `uid`, export → import keeps every
+  uid, a dump with the ids shifted by 100 merges as updates and 0 inserts, a 0.7.x dump without
+  uids, merge by id keeps the stored uid and warns, a Kletz-shaped plan sheet. `test_cli.py` and
+  `test_server.py`: a uid where an id is expected. `test_gui.py`: no table on any screen has an
+  `id`, `order` or `uid` column, each entity screen's columns, the form, the details title.
+
 ## [0.7.4] - 2026-10-28
 
 Links in Links and QMS Documents were not clickable, reported by the owner on 2026-10-28. Schema
@@ -485,7 +579,9 @@ First alpha. Core only, no screens.
 - pytest suite covering schema coercion, CRUD, audit, events, transfer round trips, and the CLI.
 - README and this changelog.
 
-[Unreleased]: https://example.invalid/asi-dewey/compare/v0.7.3...HEAD
+[Unreleased]: https://example.invalid/asi-dewey/compare/v0.8.0...HEAD
+[0.8.0]: https://example.invalid/asi-dewey/compare/v0.7.4...v0.8.0
+[0.7.4]: https://example.invalid/asi-dewey/compare/v0.7.3...v0.7.4
 [0.7.3]: https://example.invalid/asi-dewey/compare/v0.7.2...v0.7.3
 [0.7.2]: https://example.invalid/asi-dewey/compare/v0.7.1...v0.7.2
 [0.7.1]: https://example.invalid/asi-dewey/compare/v0.7.0...v0.7.1

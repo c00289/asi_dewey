@@ -1,6 +1,6 @@
 # ASI Dewey — Plan: hidden identity (`uid`) and the end of the `id` column
 
-**Status:** Decided 2026-10-28; to be implemented as asi_dewey 0.8.0 (schema version 1 → 2)
+**Status:** Implemented 2026-10-28 (asi_dewey 0.8.0); deviations in the CHANGELOG entry
 **Written:** 2026-10-28
 **Owner:** FuSa engineer
 **Target version:** asi_dewey 0.8.0
@@ -180,3 +180,5 @@ README.md, CHANGELOG.md, pyproject.toml, docs/hidden-identity-plan.md (Status)
 ## 9. Change log
 
 - 2026-10-28: written, decided; the sister plan written the same day.
+- 2026-10-28: implemented as asi_dewey 0.8.0 in four commits, one per phase; every deviation is in
+  `CHANGELOG.md`, section [0.8.0], "Deviations from the plan".
