@@ -1,0 +1,32 @@
+# environments and caches
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# build artefacts
+dist/
+build/
+*.egg-info/
+
+# machine-specific configuration (copy dewey.example.toml)
+dewey.toml
+
+# runtime data: the database is the source of truth; the workbook, diagrams and documents are generated views
+out/
+*.db
+*.db-journal
+*.xlsx
+~$*
+*.tmp
+
+# the family lock (asi_dewey.locks): by convention never created inside a repo; a precaution only
+*.lock
+!uv.lock
+primary.json
+db-*.json
+
+# OS
+Thumbs.db
+desktop.ini
