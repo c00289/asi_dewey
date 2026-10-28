@@ -18,6 +18,10 @@ class Storage(abc.ABC):
         """Create or migrate tables for every entity. Returns a summary."""
 
     @abc.abstractmethod
+    def stamp_uids(self, registry: SchemaRegistry, actor: str = "system") -> dict[str, int]:
+        """Give every row without a ``uid`` a fresh one. Returns ``{entity: rows stamped}`` for the tables touched."""
+
+    @abc.abstractmethod
     @contextmanager
     def transaction(self) -> Iterator[None]:
         """Nestable transaction: commits when the outermost block exits cleanly."""

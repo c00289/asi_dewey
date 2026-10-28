@@ -6,7 +6,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
 from ..errors import CommandError
-from ..schema import SYSTEM_FIELDS, EntitySchema, FieldType, coerce
+from ..schema import SYSTEM_FIELDS, UID_FIELD, EntitySchema, FieldType, coerce, normalise_uid
 from ..storage.base import Storage
 from ..storage.sqlite import now_iso, quote
 
@@ -73,6 +73,14 @@ class SqlRepository:
     # -- reads ----------------------------------------------------------
     def get(self, row_id: int) -> dict[str, Any] | None:
         row = self.storage.fetchone(f"SELECT * FROM {self.table} WHERE id = ?", (int(row_id),))
+        return self._decode(row) if row else None
+
+    def get_by_uid(self, uid: Any) -> dict[str, Any] | None:
+        """The row carrying ``uid`` (normalised first), or ``None`` when no row does or it is not a uid."""
+        clean = normalise_uid(uid) if uid not in (None, "") else None
+        if clean is None:
+            return None
+        row = self.storage.fetchone(f"SELECT * FROM {self.table} WHERE {quote(UID_FIELD)} = ?", (clean,))
         return self._decode(row) if row else None
 
     def list(

@@ -14,16 +14,25 @@ def test_json_dump_and_load_modes(seeded, tmp_path):
     dumped = seeded.execute("dump", out=str(out))
     assert dumped.ok and dumped.data["entities"]["fact"] == 2
     payload = json.loads(out.read_text(encoding="utf-8"))
-    assert payload["schema_version"] == 1 and set(payload["entities"]) >= {"fact", "task", "safety_plan_row"}
+    assert payload["schema_version"] == 2 and set(payload["entities"]) >= {"fact", "task", "safety_plan_row"}
 
     with Brain(tmp_path / "other.db") as other:
         loaded = other.execute("load", path=str(out), mode="replace")
         assert loaded.ok, loaded.errors
         assert other.execute("count", entity="fact").data["count"] == 2
-        # merge keeps ids, append makes new ones
+        # merge keeps ids; a row the table already knows by uid is an update in every mode (0.8.0)
         assert other.execute("load", path=str(out), mode="merge").data["entities"]["fact"]["updated"] == 2
         assert other.execute("count", entity="fact").data["count"] == 2
-        other.execute("load", path=str(out), mode="append")
+        appended = other.execute("load", path=str(out), mode="append").data["entities"]["fact"]
+        assert appended == {"inserted": 0, "updated": 2, "deleted": 0, "skipped": 0}
+        assert other.execute("count", entity="fact").data["count"] == 2
+        # append makes new rows of a file that carries no uids (a 0.7.x dump)
+        for rows in payload["entities"].values():
+            for row in rows:
+                del row["uid"]
+        old = tmp_path / "old.json"
+        old.write_text(json.dumps(payload), encoding="utf-8")
+        assert other.execute("load", path=str(old), mode="append").data["entities"]["fact"]["inserted"] == 2
         assert other.execute("count", entity="fact").data["count"] == 4
 
     single = tmp_path / "facts.json"
@@ -42,7 +51,7 @@ def test_excel_export_and_reimport(seeded, tmp_path):
     ws = wb["Safety Plan"]
     headers = [c.value for c in ws[1]]
     assert headers[:4] == ["order", "PDP Phases", "Safety Lifecycle Phase", "Safety Deliverables"]
-    assert headers.count("Tech Lead - Functional Safety") == 2 and len(headers) == 63
+    assert headers.count("Tech Lead - Functional Safety") == 2 and len(headers) == 64 and headers[-1] == "uid"
     assert ws.freeze_panes == "A2"
     assert wb["links"]["D2"].hyperlink.target == "https://x.y/z"
     assert wb["tasks"]["D2"].value.date().isoformat() == "2026-10-20"

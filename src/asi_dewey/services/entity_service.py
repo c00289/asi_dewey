@@ -6,9 +6,9 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from ..automation.events import EventBus
-from ..errors import CommandError, NotFound
+from ..errors import CommandError, NotFound, StorageError, ValidationError
 from ..repositories.sql_repo import SqlRepository
-from ..schema import EntitySchema, LookupRegistry
+from ..schema import UID_FIELD, EntitySchema, LookupRegistry, new_uid, normalise_uid
 from ..storage.base import Storage
 
 LOAD_MODES = ("replace", "merge", "append")
@@ -48,11 +48,42 @@ class EntityService:
             raise NotFound(f"{self.schema.name} {row_id} not found")
         return row
 
+    def get_by_uid(self, uid: Any) -> dict[str, Any]:
+        row = self.repo.get_by_uid(uid)
+        if row is None:
+            raise NotFound(f"{self.schema.name} uid {uid} not found")
+        return row
+
+    def resolve(self, ref: Any) -> int:
+        """The id behind ``ref``: an int or an all-digit string is an id; a uid (any case, braces
+        allowed) is looked up and an unknown one is ``NotFound``; anything else is a ``CommandError``."""
+        if isinstance(ref, int) and not isinstance(ref, bool):
+            return ref
+        text = str(ref).strip()
+        if text.isdigit():
+            return int(text)
+        if normalise_uid(text) is None:
+            raise CommandError(f"{self.schema.name}: {ref!r} is neither an id nor a uid")
+        return int(self.get_by_uid(text)["id"])
+
     # -- writes ---------------------------------------------------------
+    def _insert(self, clean: dict[str, Any], row_id: int | None = None) -> dict[str, Any]:
+        """``repo.create`` with the unique index on ``uid`` reported as a validation error, not a crash."""
+        try:
+            return self.repo.create(clean, row_id)
+        except StorageError as exc:
+            if "UNIQUE" in str(exc) and f".{UID_FIELD}" in str(exc):
+                raise ValidationError(
+                    self.schema.name, [f"{UID_FIELD} {clean.get(UID_FIELD)} is already used by another row"]
+                ) from None
+            raise
+
     def create(self, data: Mapping[str, Any], actor: str = "python") -> tuple[dict[str, Any], list[str]]:
         clean, warnings = self.schema.coerce_row(data, self.lookups)
+        if not clean.get(UID_FIELD):
+            clean[UID_FIELD] = new_uid()  # assigned once, here; a uid given by the caller (a file) is kept
         with self.storage.transaction():
-            row = self.repo.create(clean)
+            row = self._insert(clean)
             self.storage.audit(actor, "create", self.schema.name, row["id"], clean)
         self.events.publish("entity.created", entity=self.schema.name, id=row["id"], actor=actor, row=row)
         return row, warnings
@@ -61,6 +92,10 @@ class EntityService:
         self, row_id: int, data: Mapping[str, Any], actor: str = "python"
     ) -> tuple[dict[str, Any], list[str]]:
         clean, warnings = self.schema.coerce_row(data, self.lookups, partial=True)
+        if UID_FIELD in clean:
+            if clean[UID_FIELD] != self.get(row_id).get(UID_FIELD):
+                raise ValidationError(self.schema.name, [f"{UID_FIELD} is immutable"])
+            del clean[UID_FIELD]  # the same value: a no-op
         with self.storage.transaction():
             row = self.repo.update(row_id, clean)
             if row is None:
@@ -82,8 +117,13 @@ class EntityService:
         mode: str = "merge",
         actor: str = "import",
     ) -> dict[str, Any]:
-        """Bulk load. ``replace`` wipes first; ``merge`` upserts by id; ``append`` inserts fresh ids.
+        """Bulk load. ``replace`` wipes first; ``merge`` upserts; ``append`` inserts.
 
+        Identity first (docs/hidden-identity-plan.md, 3.1): in every mode a row whose ``uid`` is
+        already in the table updates that row, whatever its ``id`` in the file; otherwise, in merge
+        mode, a row whose ``id`` exists updates that row by id and the stored uid stays; otherwise
+        the row is inserted keeping the file's uid when it has one (and its id in merge mode), with
+        a fresh uid when it has none (a 0.7.x file). ``replace`` wipes first and keeps the file's uids.
         Rows are validated one by one; a bad row is reported and skipped, never fatal.
         """
         if mode not in LOAD_MODES:
@@ -107,12 +147,21 @@ class EntityService:
                     continue
                 summary["warnings"].extend(f"row {index}: {w}" for w in warnings)
                 row_id = raw.get("id")
-                if mode == "merge" and row_id is not None and self.repo.exists(int(row_id)):
+                uid = clean.pop(UID_FIELD, None)
+                known = self.repo.get_by_uid(uid) if uid else None
+                if known is not None:
+                    self.repo.update(int(known["id"]), clean)
+                    summary["updated"] += 1
+                elif mode == "merge" and row_id is not None and self.repo.exists(int(row_id)):
+                    if uid:
+                        summary["warnings"].append(
+                            f"row {index}: matched {self.schema.name} {row_id} by id; its uid is kept, not {uid}"
+                        )
                     self.repo.update(int(row_id), clean)
                     summary["updated"] += 1
                 else:
                     keep = int(row_id) if (mode == "merge" and row_id is not None) else None
-                    self.repo.create(clean, keep)
+                    self._insert({**clean, UID_FIELD: uid or new_uid()}, keep)
                     summary["inserted"] += 1
             self.storage.audit(
                 actor, f"load:{mode}", self.schema.name, None,

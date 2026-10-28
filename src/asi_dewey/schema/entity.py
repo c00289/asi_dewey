@@ -7,14 +7,20 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..errors import ValidationError
-from .fields import FieldSpec, FieldType, coerce
+from .fields import UID_FIELD, FieldSpec, FieldType, coerce, uid_field
 
 SYSTEM_FIELDS: tuple[str, ...] = ("id", "created_at", "updated_at")
 
 
 @dataclass(frozen=True)
 class EntitySchema:
-    """Declares an entity: its names, its fields, and how it is ordered."""
+    """Declares an entity: its names, its fields, and how it is ordered.
+
+    Every entity ends with the hidden ``uid`` field (docs/hidden-identity-plan.md): a declaration
+    without one gets it appended, and a declaration that names ``uid`` must put it last, hidden,
+    as ``TEXT``. ``fields`` is the full tuple the storage and the transfers use; ``visible_fields``
+    is what the window shows.
+    """
 
     name: str
     table: str
@@ -29,6 +35,13 @@ class EntitySchema:
         if not self.name.isidentifier():
             raise ValueError(f"entity name {self.name!r} must be a Python identifier")
         fields = tuple(self.fields)
+        if not fields or fields[-1].name != UID_FIELD:
+            if any(spec.name == UID_FIELD for spec in fields):
+                raise ValueError(f"{self.name}: the {UID_FIELD!r} field must be the last field")
+            fields = (*fields, uid_field())
+        uid = fields[-1]
+        if uid.type is not FieldType.TEXT or not uid.hidden or uid.header != UID_FIELD:
+            raise ValueError(f"{self.name}: the {UID_FIELD!r} field must be hidden TEXT headed {UID_FIELD!r}")
         object.__setattr__(self, "fields", fields)
         seen: dict[str, FieldSpec] = {}
         for spec in fields:
@@ -46,6 +59,11 @@ class EntitySchema:
     @property
     def field_names(self) -> tuple[str, ...]:
         return tuple(spec.name for spec in self.fields)
+
+    @property
+    def visible_fields(self) -> tuple[FieldSpec, ...]:
+        """The fields the window may show: every field that is not hidden, in order."""
+        return tuple(spec for spec in self.fields if not spec.hidden)
 
     @property
     def all_columns(self) -> tuple[str, ...]:

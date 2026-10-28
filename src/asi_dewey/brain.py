@@ -104,6 +104,7 @@ class Brain:
         try:
             self.storage = StorageFactory.create(backend, path=self.db_path)
             self.migration = self.storage.ensure_schema(self.registry)
+            self.migration["uids_stamped"] = self.storage.stamp_uids(self.registry)
         except BaseException:
             self._closed = True
             guard.release(self.db_path)

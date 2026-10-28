@@ -2,7 +2,8 @@
 
 Importing this module registers every entity and lookup with the default
 registries. Column labels are the exact workbook headers so the Excel export
-reproduces the familiar sheets and the Excel import can read them back.
+reproduces the familiar sheets and the Excel import can read them back. Every entity ends with
+the hidden ``uid`` field, appended by ``EntitySchema`` (docs/hidden-identity-plan.md, 3.1).
 """
 
 from __future__ import annotations

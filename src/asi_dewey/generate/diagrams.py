@@ -72,7 +72,9 @@ def schema_map(brain: Brain, params: dict[str, str]) -> Any:
     for schema in brain.registry:
         d.node(
             schema.name, schema.label, "block", stereotype="entity",
-            compartments=[("", [f"fields: {len(schema.fields)}", f"rows: {brain.service(schema.name).count()}"])],
+            compartments=[
+                ("", [f"fields: {len(schema.visible_fields)}", f"rows: {brain.service(schema.name).count()}"]),
+            ],
         )
     return d
 

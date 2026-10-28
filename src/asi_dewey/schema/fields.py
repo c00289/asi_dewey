@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import datetime as dt
 import enum
+import re
+import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -19,6 +21,25 @@ _EXCEL_EPOCH = dt.date(1899, 12, 30)
 _TRUE = {"1", "true", "yes", "y", "x", "on", "t"}
 _FALSE = {"0", "false", "no", "n", "off", "f", ""}
 _DATE_FORMATS = ("%Y-%m-%d", "%m/%d/%Y", "%d.%m.%Y", "%Y/%m/%d", "%d-%b-%Y")
+
+# the row identity shared by name with asi_kletz (docs/hidden-identity-plan.md, section 3.1):
+# the canonical lowercase UUID4 with dashes, 36 characters, the last field of every entity
+UID_FIELD = "uid"
+UID_PATTERN = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+
+
+def new_uid() -> str:
+    """A fresh row identity: ``str(uuid.uuid4())``."""
+    return str(uuid.uuid4())
+
+
+def normalise_uid(value: Any) -> str | None:
+    """The canonical form of ``value`` (braces stripped, lower-cased), or ``None`` when it is not a uid."""
+    text = str(value).strip()
+    if text.startswith("{") and text.endswith("}"):
+        text = text[1:-1].strip()
+    text = text.lower()
+    return text if UID_PATTERN.match(text) else None
 
 
 class FieldType(enum.StrEnum):
@@ -64,6 +85,7 @@ class FieldSpec:
     group: str | None = None
     width: int | None = None
     help: str = ""
+    hidden: bool = False  # no widget, no column, no place in a diagram or document; in every file
 
     def __post_init__(self) -> None:
         if not self.name.isidentifier() or self.name.startswith("_"):
@@ -101,7 +123,16 @@ class FieldSpec:
             "lookup": self.lookup,
             "group": self.group,
             "help": self.help,
+            "hidden": self.hidden,
         }
+
+
+def uid_field() -> FieldSpec:
+    """The hidden ``uid`` every entity ends with; ``EntitySchema`` appends it to a declaration without one."""
+    return FieldSpec(
+        UID_FIELD, FieldType.TEXT, "uid", hidden=True,
+        help="Row identity: assigned once on creation, never shown, never changed, in every file the tool writes",
+    )
 
 
 def excel_serial_to_date(serial: float) -> dt.date:
@@ -132,6 +163,12 @@ def coerce(
         if spec.required:
             raise ValueError(f"{spec.name}: a value is required")
         return None, None
+
+    if spec.name == UID_FIELD:
+        uid = normalise_uid(value)
+        if uid is None:
+            raise ValueError(f"{spec.name}: {value!r} is not a uid (a lowercase UUID4 with dashes, 36 characters)")
+        return uid, None
 
     kind = spec.type
     if kind is FieldType.INT:

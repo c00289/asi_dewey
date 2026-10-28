@@ -1,6 +1,16 @@
 from __future__ import annotations
 
+import shutil
+import sqlite3
+from pathlib import Path
+
+import pytest
+
 from asi_dewey import Brain, __version__
+from asi_dewey.errors import CommandError, NotFound, ValidationError
+from asi_dewey.schema import UID_PATTERN, new_uid
+
+FIXTURE_0_7_4 = Path(__file__).parent / "fixtures" / "dewey-0.7.4.db"
 
 
 def test_crud_round_trip(brain):
@@ -106,3 +116,121 @@ def test_load_config_reads_the_jira_live_keys(tmp_path):
     assert "jira_live_autofetch" not in loaded and "jira_live_jql" not in loaded
     config.write_text("jira_live_autofetch = true\n", encoding="utf-8")
     assert load_config(config)["jira_live_autofetch"] is True
+
+
+# -- the hidden identity (0.8.0, docs/hidden-identity-plan.md) ---------------------------------
+def test_create_assigns_a_uid_once_and_keeps_a_given_one(brain):
+    row = brain.execute("create", entity="fact", data={"name": "a"}).data
+    assert UID_PATTERN.match(row["uid"]) and len(row["uid"]) == 36
+    assert brain.execute("get", entity="fact", id=row["id"]).data["uid"] == row["uid"]
+    given = new_uid()
+    kept = brain.execute("create", entity="fact", data={"name": "b", "uid": "{" + given.upper() + "}"}).data
+    assert kept["uid"] == given  # normalised, then kept
+    assert brain.storage.audit_tail(1)[0]["payload"]["uid"] == given  # the trace is in the audit log
+    other = brain.execute("create", entity="link", data={"name": "c"}).data
+    assert other["uid"] != row["uid"] != kept["uid"]
+    bad = brain.execute("create", entity="fact", data={"name": "d", "uid": "nope"})
+    assert not bad.ok and bad.errors == ["uid: 'nope' is not a uid (a lowercase UUID4 with dashes, 36 characters)"]
+    listed = brain.execute("list", entity="fact", filter=[f"uid={given.upper()}"]).data
+    assert [r["id"] for r in listed] == [kept["id"]]
+
+
+def test_update_refuses_to_change_the_uid_and_accepts_the_same_one(brain):
+    row = brain.execute("create", entity="fact", data={"name": "a"}).data
+    refused = brain.execute("update", entity="fact", id=row["id"], set=[f"uid={new_uid()}"])
+    assert not refused.ok and refused.errors == ["uid is immutable"]
+    assert brain.execute("get", entity="fact", id=row["id"]).data["uid"] == row["uid"]
+    same = brain.execute("update", entity="fact", id=row["id"], data={"uid": row["uid"].upper(), "text": "t"})
+    assert same.ok and same.data["uid"] == row["uid"] and same.data["text"] == "t"
+    assert brain.storage.audit_tail(1)[0]["payload"] == {"text": "t"}  # the no-op uid is not audited as a change
+    with pytest.raises(ValidationError, match="uid is immutable"):
+        brain.service("fact").update(row["id"], {"uid": None})
+    with pytest.raises(NotFound):
+        brain.service("fact").update(999, {"uid": row["uid"]})
+
+
+def test_two_rows_cannot_share_a_uid(brain):
+    row = brain.execute("create", entity="fact", data={"name": "a"}).data
+    twin = brain.execute("create", entity="fact", data={"name": "b", "uid": row["uid"]})
+    assert not twin.ok and twin.errors == [f"uid {row['uid']} is already used by another row"]
+    assert brain.execute("count", entity="fact").data["count"] == 1
+    assert brain.execute("create", entity="link", data={"name": "c", "uid": row["uid"]}).ok  # per table
+    for schema in brain.registry:  # the unique index on every table
+        indexes = brain.storage.fetchall(f'PRAGMA index_list("{schema.table}")')
+        assert [(i["name"], i["unique"]) for i in indexes if i["name"] == f"ix_{schema.table}_uid"] == [
+            (f"ix_{schema.table}_uid", 1)
+        ]
+
+
+def test_get_by_uid_and_resolve(brain):
+    service = brain.service("fact")
+    row = brain.execute("create", entity="fact", data={"name": "a"}).data
+    assert service.get_by_uid(row["uid"]) == row and service.get_by_uid("{" + row["uid"].upper() + "}") == row
+    assert service.resolve(row["id"]) == row["id"] == service.resolve(str(row["id"]))
+    assert service.resolve(row["uid"]) == row["id"] == service.resolve(row["uid"].upper())
+    with pytest.raises(NotFound, match="fact uid .* not found"):
+        service.get_by_uid(new_uid())
+    with pytest.raises(NotFound):
+        service.resolve(new_uid())
+    with pytest.raises(CommandError, match="neither an id nor a uid"):
+        service.resolve("abc")
+    assert service.repo.get_by_uid("nope") is None and service.repo.get_by_uid(None) is None
+
+
+def _rows_without_uid(db: Path) -> dict[str, list[dict]]:
+    """Every entity row of every table, read with sqlite3 directly, ``uid`` dropped."""
+    con = sqlite3.connect(db)
+    con.row_factory = sqlite3.Row
+    try:
+        names = [r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")]
+        return {
+            name: [{k: v for k, v in dict(r).items() if k != "uid"} for r in con.execute(f'SELECT * FROM "{name}"')]
+            for name in names
+            if name not in ("schema_migrations", "audit_log", "sqlite_sequence")
+        }
+    finally:
+        con.close()
+
+
+def _columns(db: Path, table: str) -> set[str]:
+    con = sqlite3.connect(db)
+    try:
+        return {r[1] for r in con.execute(f'PRAGMA table_info("{table}")')}
+    finally:
+        con.close()
+
+
+def test_a_0_7_4_database_opens_as_0_8_0_with_every_row_identified(tmp_path):
+    db = tmp_path / "dewey.db"
+    shutil.copy(FIXTURE_0_7_4, db)
+    before = _rows_without_uid(db)
+    assert len(before["facts"]) == 2 and len(before["links"]) == 1 and len(before["qms_documents"]) == 1
+    assert "uid" not in _columns(db, "facts") and len(before) == 9
+    with Brain(db) as b:
+        assert b.migration["created"] == [] and b.migration["uids_stamped"] == {"fact": 2, "link": 1, "qms_document": 1}
+        assert set(b.migration["altered"]) == {s.table for s in b.registry}
+        assert all(cols == ["uid"] for cols in b.migration["altered"].values())
+        uids: dict[tuple[str, int], str] = {}
+        for schema in b.registry:
+            assert "uid" in _columns(db, schema.table)
+            indexes = b.storage.fetchall(f'PRAGMA index_list("{schema.table}")')
+            assert (f"ix_{schema.table}_uid", 1) in [(i["name"], i["unique"]) for i in indexes]
+            for row in b.service(schema.name).list():
+                assert UID_PATTERN.match(row["uid"]), (schema.name, row)
+                uids[(schema.name, row["id"])] = row["uid"]
+        assert len(uids) == 4 and len(set(uids.values())) == 4
+        stamped = [a for a in b.storage.audit_tail(50) if a["action"] == "stamp_uids"]
+        assert sorted((a["entity"], a["payload"]["count"]) for a in stamped) == [
+            ("fact", 2), ("link", 1), ("qms_document", 1),
+        ]
+        assert {a["actor"] for a in stamped} == {"system"} and all(a["entity_id"] is None for a in stamped)
+        migrations = b.storage.fetchall("SELECT app_version FROM schema_migrations ORDER BY version")
+        assert [m["app_version"] for m in migrations] == ["0.7.4", __version__]  # the fingerprint changed
+    assert _rows_without_uid(db) == before  # nothing else changed: values and timestamps alike
+    # a second open stamps nothing and audits nothing
+    with Brain(db) as b:
+        assert b.migration["uids_stamped"] == {} and b.migration["altered"] == {}
+        for (name, row_id), uid in uids.items():
+            assert b.execute("get", entity=name, id=row_id).data["uid"] == uid
+        assert len([a for a in b.storage.audit_tail(50) if a["action"] == "stamp_uids"]) == 3
+        assert len(b.storage.fetchall("SELECT 1 FROM schema_migrations")) == 2

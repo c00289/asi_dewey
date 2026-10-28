@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from ..errors import StorageError
-from ..schema import FieldType, SchemaRegistry
+from ..schema import UID_FIELD, FieldType, SchemaRegistry, new_uid
 from ..version import __version__
 from .base import Storage
 
@@ -107,17 +107,22 @@ class SQLiteStorage(Storage):
                 if schema.table not in existing_tables:
                     self.execute(f"CREATE TABLE {quote(schema.table)} ({', '.join(cols)})")
                     created.append(schema.table)
-                    continue
-                present = {
-                    r["name"] for r in self.fetchall(f"PRAGMA table_info({quote(schema.table)})")
-                }
-                for spec in schema.fields:
-                    if spec.name not in present:
-                        self.execute(
-                            f"ALTER TABLE {quote(schema.table)} ADD COLUMN "
-                            + self._column_ddl(spec.name, spec.type)
-                        )
-                        altered.setdefault(schema.table, []).append(spec.name)
+                else:
+                    present = {
+                        r["name"] for r in self.fetchall(f"PRAGMA table_info({quote(schema.table)})")
+                    }
+                    for spec in schema.fields:
+                        if spec.name not in present:
+                            self.execute(
+                                f"ALTER TABLE {quote(schema.table)} ADD COLUMN "
+                                + self._column_ddl(spec.name, spec.type)
+                            )
+                            altered.setdefault(schema.table, []).append(spec.name)
+                # the row identity is unique per table (NULLs, the rows not yet stamped, are allowed)
+                self.execute(
+                    f"CREATE UNIQUE INDEX IF NOT EXISTS {quote(f'ix_{schema.table}_uid')}"
+                    f" ON {quote(schema.table)} ({quote(UID_FIELD)})"
+                )
             fingerprint = registry.fingerprint()
             last = self.fetchone("SELECT fingerprint FROM schema_migrations ORDER BY version DESC")
             if last is None or last["fingerprint"] != fingerprint:
@@ -127,6 +132,26 @@ class SQLiteStorage(Storage):
                     (fingerprint, now_iso(), __version__),
                 )
         return {"created": created, "altered": altered, "fingerprint": fingerprint}
+
+    def stamp_uids(self, registry: SchemaRegistry, actor: str = "system") -> dict[str, int]:
+        """Give every row whose ``uid`` is NULL or empty a fresh one: one ``UPDATE ... WHERE id = ?``
+        per row inside one transaction, ``updated_at`` untouched, audited once per table that had
+        rows to stamp as ``stamp_uids`` with the count. A 0.7.x database therefore opens with every
+        row identified and nothing else changed; a second open stamps nothing and audits nothing.
+        """
+        stamped: dict[str, int] = {}
+        with self.transaction():
+            for schema in registry:
+                table, column = quote(schema.table), quote(UID_FIELD)
+                ids = [
+                    r["id"] for r in self.fetchall(f"SELECT id FROM {table} WHERE {column} IS NULL OR {column} = ''")
+                ]
+                if not ids:
+                    continue
+                self.executemany(f"UPDATE {table} SET {column} = ? WHERE id = ?", [(new_uid(), i) for i in ids])
+                self.audit(actor, "stamp_uids", schema.name, None, {"count": len(ids)})
+                stamped[schema.name] = len(ids)
+        return stamped
 
     @staticmethod
     def _column_ddl(name: str, kind: FieldType) -> str:

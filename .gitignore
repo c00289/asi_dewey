@@ -17,6 +17,7 @@ dewey.toml
 out/
 *.db
 *.db-journal
+!tests/fixtures/*.db
 *.xlsx
 ~$*
 *.tmp
