@@ -200,6 +200,57 @@ def test_widget_factory_round_trips(window, seeded):
     assert task.field("task_class").type is FieldType.ENUM
 
 
+def _point_at(monkeypatch, screen, iid: str, column: str):
+    """Point the screen's tree at the cell ``(iid, column)`` (a withdrawn window has no geometry to hit-test)
+    and return a fake pointer event."""
+    from types import SimpleNamespace
+
+    number = screen.columns.index(column) + 1
+    monkeypatch.setattr(screen.tree, "identify_column", lambda x: f"#{number}")
+    monkeypatch.setattr(screen.tree, "identify_row", lambda y: iid)
+    monkeypatch.setattr(screen.tree, "identify_region", lambda x, y: "cell")
+    return SimpleNamespace(x=5, y=5)
+
+
+def test_url_cell_click_opens_the_link_and_selects_the_row(window, seeded, monkeypatch):
+    screen = window.show("entity:link")
+    assert screen.url_columns == ["url"]
+    row_id = seeded.execute("list", entity="link").data[0]["id"]
+    event = _point_at(monkeypatch, screen, str(row_id), "url")
+    assert screen._on_click(event) == "break"
+    assert screen.selected_id == row_id and window.status_text() == "Open: https://x.y/z"
+    screen._on_motion(event)
+    assert str(screen.tree.cget("cursor")) == "hand2"
+    name_event = _point_at(monkeypatch, screen, str(row_id), "name")
+    assert screen._on_click(name_event) is None  # another column: normal selection, no browser
+    screen._on_motion(name_event)
+    assert str(screen.tree.cget("cursor")) == ""
+
+
+def test_url_cell_without_a_value_is_not_a_link(window, seeded, monkeypatch):
+    created = seeded.execute("create", entity="qms_document", data={"name": "QP-11", "order": 1}).data
+    screen = window.show("entity:qms_document")
+    assert screen.url_columns == ["url"]
+    window.set_status("")
+    assert screen._on_click(_point_at(monkeypatch, screen, str(created["id"]), "url")) is None
+    assert window.status_text() == ""
+
+
+def test_url_widget_ctrl_click_and_open_report_through_the_screen(window, seeded):
+    screen = window.show("entity:qms_document")
+    widget = screen.widgets["url"]
+    widget.set("https://qms.example/QP-11")
+    widget.open()
+    assert window.status_text() == "Open: https://qms.example/QP-11"
+    window.set_status("")
+    assert widget._ctrl_click(None) == "break"
+    assert window.status_text() == "Open: https://qms.example/QP-11"
+    widget.set("")
+    window.set_status("")
+    widget.open()
+    assert window.status_text() == ""  # nothing to open
+
+
 def test_gui_verb_is_registered():
     assert "gui" in default_command_factory.verbs()
 

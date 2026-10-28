@@ -3,12 +3,20 @@
 One of the [ASI FuSa tools](https://github.com/c00289/c00289/blob/main/README.md) by Roy Mendoza; the master README there lists every sibling.
 
 A functional-safety (FuSa) working-knowledge API for the Wheel Loader programme, with a
-command line and a tkinter desktop window on top. Version **0.7.3**, alpha. Named after
+command line and a tkinter desktop window on top. Version **0.7.4**, alpha. Named after
 Melvil Dewey: one classification scheme, many views.
 
 The idea, in one sentence: a database is the single source of truth, the Excel workbook
 is a generated *view* of it, and everything a human can do through a front end an AI agent
 can do through the same commands.
+
+## What is in 0.7.4
+
+- **Links are clickable.** On the Links and QMS Documents screens (every URL field: `link text`,
+  `QMS link`, the Jira ticket link) a click on the URL cell in the table opens it in the browser
+  and selects the row, and the pointer is a hand over it; in the form, Ctrl+click on the URL text
+  opens it, beside the Open button that was already there. The status bar names what was opened
+  (`Open: <url>`); with `interactive=False` nothing opens and only the line is written.
 
 ## What is in 0.7.3
 

@@ -106,15 +106,26 @@ class DateWidget(EntryWidget):
 
 
 class UrlWidget(EntryWidget):
+    """A URL field: the entry, an Open button, and Ctrl+click on the entry text itself. The
+    ``opener`` option (a callable taking the URL) replaces ``webbrowser.open`` so a screen can
+    report the URL on its status bar and a test can see it without a browser."""
+
     def build(self) -> None:
         self.options.setdefault("width", 50)
         super().build()
+        self.entry.bind("<Control-Button-1>", self._ctrl_click)
         ttk.Button(self, text="Open", width=6, command=self.open).pack(side="left", padx=(4, 0))
+        ttk.Label(self, text="Ctrl+click opens", style="Muted.TLabel").pack(side="left", padx=(6, 0))
+
+    def _ctrl_click(self, _event: Any) -> str:
+        self.open()
+        return "break"
 
     def open(self) -> None:
         url = self.get()
         if url:
-            webbrowser.open(url)
+            opener = self.options.get("opener") or webbrowser.open
+            opener(url)
 
 
 class EnumWidget(FieldWidget):

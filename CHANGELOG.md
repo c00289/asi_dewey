@@ -11,6 +11,27 @@ All notable changes to ASI Dewey are recorded here. The format follows
 - Excel import diff preview; `fill` / `submit` / `cancel` puppeting of a screen's form; a
   `View > Automation` submenu or screen; date picker widget.
 
+## [0.7.4] - 2026-10-28
+
+Links in Links and QMS Documents were not clickable, reported by the owner on 2026-10-28. Schema
+version unchanged (1).
+
+### Added
+- **Clickable URL cells** on every entity screen with a URL field (Links `link text`, QMS Documents
+  `QMS link`, Jira Tickets `JIRA link`): `EntityScreen.url_columns` lists them; a `<Button-1>` on
+  such a cell with a value selects the row and calls `EntityScreen.open_url`, which opens the
+  browser when the window is interactive and writes `Open: <url>` on the status bar either way;
+  `<Motion>` shows a `hand2` cursor over a link cell and nothing else changes. Any other cell keeps
+  the normal selection. An empty URL cell is not a link.
+- **Ctrl+click on the URL form field** opens it too (`UrlWidget`, bound on the entry; the caption
+  says so), and the Open button now reports through the same `open_url` (the widget takes an
+  `opener` option; `webbrowser.open` stays the default when no screen provides one).
+
+### Tests
+- `test_url_cell_click_opens_the_link_and_selects_the_row`, `test_url_cell_without_a_value_is_not_a_link`,
+  `test_url_widget_ctrl_click_and_open_report_through_the_screen` (the tree's `identify_*` are
+  patched, as the comments-column test does, since a withdrawn window has no geometry to hit-test).
+
 ## [0.7.3] - 2026-10-28
 
 The JIRA Live Data window froze while it fetched, and it fetched on its own. Schema version

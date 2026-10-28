@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tkinter as tk
+import webbrowser
 from tkinter import ttk
 from typing import TYPE_CHECKING, Any
 
@@ -88,6 +89,12 @@ class EntityScreen(Screen):
             stretch = spec is not None and spec.type is FieldType.MULTILINE
             self.tree.column(name, width=width, minwidth=40, stretch=stretch)  # fit_columns has the last word
         self.tree.bind("<<TreeviewSelect>>", self._on_select)
+        # a URL cell is a link: a click opens it (and selects the row), the pointer is a hand over it
+        self.url_columns = [c for c in self.columns if c != "id" and self.schema.field(c).type is FieldType.URL]
+        self._cursor = ""
+        if self.url_columns:
+            self.tree.bind("<Button-1>", self._on_click)
+            self.tree.bind("<Motion>", self._on_motion)
         paned.add(table, weight=3)
 
         form_box = ttk.LabelFrame(paned, text=f"{self.schema.label} details")
@@ -106,7 +113,7 @@ class EntityScreen(Screen):
             ttk.Label(parent, text=spec.header + (" *" if spec.required else "")).grid(
                 row=row, column=0, sticky="ne", padx=(4, 8), pady=3
             )
-            widget = factory.create(parent, spec)
+            widget = factory.create(parent, spec, **self._widget_options(spec))
             widget.grid(row=row, column=1, sticky="ew", pady=3)
             self.widgets[spec.name] = widget
             row += 1
@@ -130,11 +137,47 @@ class EntityScreen(Screen):
                         grid_row += 1
                         flag_col = 0
                     ttk.Label(box, text=spec.header).grid(row=grid_row, column=0, sticky="w", padx=4, pady=2)
-                    widget = factory.create(box, spec)
+                    widget = factory.create(box, spec, **self._widget_options(spec))
                     widget.grid(row=grid_row, column=1, columnspan=2, sticky="ew", pady=2)
                     grid_row += 1
                 self.widgets[spec.name] = widget
             row += 1
+
+    def _widget_options(self, spec: FieldSpec) -> dict[str, Any]:
+        return {"opener": self.open_url} if spec.type is FieldType.URL else {}
+
+    # -- links ----------------------------------------------------------
+    def _url_at(self, event: tk.Event) -> tuple[str | None, str | None]:
+        """``(row iid, url)`` under the pointer when it is over a URL cell with a value, else Nones."""
+        column = self.tree.identify_column(event.x)
+        iid = self.tree.identify_row(event.y)
+        if not column or not iid or self.tree.identify_region(event.x, event.y) != "cell":
+            return None, None
+        name = self.columns[int(column[1:]) - 1]
+        if name not in self.url_columns:
+            return None, None
+        url = self.by_id.get(int(iid), {}).get(name)
+        return (iid, str(url)) if url else (None, None)
+
+    def _on_click(self, event: tk.Event) -> str | None:
+        iid, url = self._url_at(event)
+        if url is None:
+            return None  # any other cell: normal selection
+        self.select(int(iid))
+        self.open_url(url)
+        return "break"
+
+    def _on_motion(self, event: tk.Event) -> None:
+        cursor = "hand2" if self._url_at(event)[1] else ""
+        if cursor != self._cursor:
+            self._cursor = cursor
+            self.tree.configure(cursor=cursor)
+
+    def open_url(self, url: str) -> None:
+        """Open ``url`` in the browser when the window is interactive; the status bar names it either way."""
+        if self.window.interactive:
+            webbrowser.open(url)
+        self.window.set_status(f"Open: {url}")
 
     # -- data -----------------------------------------------------------
     def refresh(self) -> None:
