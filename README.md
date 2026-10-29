@@ -3,12 +3,18 @@
 One of the [ASI FuSa tools](https://github.com/c00289/c00289/blob/main/README.md) by Roy Mendoza; the master README there lists every sibling.
 
 A functional-safety (FuSa) working-knowledge API for the Wheel Loader programme, with a
-command line and a tkinter desktop window on top. Version **0.8.1**, alpha. Named after
+command line and a tkinter desktop window on top. Version **0.8.2**, alpha. Named after
 Melvil Dewey: one classification scheme, many views.
 
 The idea, in one sentence: a database is the single source of truth, the Excel workbook
 is a generated *view* of it, and everything a human can do through a front end an AI agent
 can do through the same commands.
+
+## What is in 0.8.2
+
+The scrollbar's slider, the thumb a person drags, is the palette's dimmed primary at rest and the
+full primary (the neon) under the pointer, instead of the panel colour that made it vanish into
+its trough. One line of the family theme recipe (`gui/theme.py`), the same in the sister tool.
 
 ## What is in 0.8.1
 

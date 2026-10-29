@@ -772,3 +772,14 @@ def test_details_title_names_the_selected_row(window, seeded):
     assert screen.form_box.cget("text") == "Fact details" and f"Deleted fact {copy}" == window.status_text()
     # the tree iids are still the ids
     assert {int(i) for i in screen.tree.get_children()} == {r["id"] for r in seeded.execute("list", entity="fact").data}
+
+
+def test_scrollbar_thumb_is_the_primary(window):
+    """Owner, 2026-10-29: the slider of a scrollbar is the dimmed primary at rest and the neon while dragged."""
+    from tkinter import ttk
+
+    style = ttk.Style(window)
+    p = window.theme.palette
+    assert style.lookup("TScrollbar", "background") == p.primary_dim
+    assert style.lookup("TScrollbar", "troughcolor") == p.bg  # the trough is the background, the thumb stands on it
+    assert dict(style.map("TScrollbar", "background")) == {"active": p.primary}

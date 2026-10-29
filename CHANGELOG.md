@@ -11,6 +11,21 @@ All notable changes to ASI Dewey are recorded here. The format follows
 - Excel import diff preview; `fill` / `submit` / `cancel` puppeting of a screen's form; a
   `View > Automation` submenu or screen; date picker widget.
 
+## [0.8.2] - 2026-10-29
+
+The owner, 2026-10-29: "change the colour of the little widget that you pull up and down or side to
+side to interact with a scroll bar."
+
+### Changed
+- **The scrollbar thumb** (`gui/theme.py`, the grid recipe): `TScrollbar` `background`, `lightcolor`
+  and `darkcolor` are the palette's `primary_dim` (they were the panel colour, the same as the
+  trough's neighbours, so the thumb was hard to find), and `active` maps to `primary`; the trough
+  stays `bg`, the arrows as before. Implemented the same way in the sister tool: a convention, not
+  shared code.
+
+### Tests
+- `test_scrollbar_thumb_is_the_primary`.
+
 ## [0.8.1] - 2026-10-28
 
 The JIRA Live Data screen is gone from the window, by the owner's instruction of 2026-10-28.
