@@ -1,0 +1,41 @@
+# Continuous integration: every push to main, every v* tag and every pull request runs ruff and pytest on
+# windows-latest, where Tk is available, so the GUI tests run too. A release is green by this, not by anyone's word.
+# asi_dewey depends on asi_escher, asi_gutenberg, asi_hopper as editable path sources (../<sibling>), so each sibling is checked
+# out beside it under the workspace and every step runs inside asi_dewey/.
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: asi_dewey
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: asi_dewey
+      - uses: actions/checkout@v4
+        with:
+          repository: c00289/asi_escher
+          path: asi_escher
+      - uses: actions/checkout@v4
+        with:
+          repository: c00289/asi_gutenberg
+          path: asi_gutenberg
+      - uses: actions/checkout@v4
+        with:
+          repository: c00289/asi_hopper
+          path: asi_hopper
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv python install 3.13
+      - run: uv sync
+      - run: uv run ruff check src tests
+      - run: uv run pytest -q
