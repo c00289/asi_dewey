@@ -10,7 +10,7 @@ import pytest
 
 from asi_dewey import Brain
 from asi_dewey.automation.session import ENV_AUTOMATION, ENV_SESSION
-from asi_dewey.brain import ENV_CONFIG, ENV_DB, ENV_OUT, ENV_WORKBOOK, load_config
+from asi_dewey.brain import ENV_CONFIG, ENV_CONTROL_STRUCTURES, ENV_DB, ENV_OUT, ENV_WORKBOOK, load_config
 from asi_dewey.gui.theme import ENV_THEME
 from asi_dewey.locks import ENV_LOCK_DIR
 from asi_dewey.prefs import ENV_PREFS
@@ -27,6 +27,9 @@ def _isolated_config(monkeypatch, tmp_path):
     monkeypatch.delenv(ENV_DB, raising=False)
     monkeypatch.delenv(ENV_WORKBOOK, raising=False)
     monkeypatch.delenv(ENV_OUT, raising=False)
+    # the template builder never finds the private shelf beside the repo by accident: a test that
+    # wants it (the local-only smoke test) points the variable at it on purpose
+    monkeypatch.setenv(ENV_CONTROL_STRUCTURES, str(tmp_path / "no-control-structures"))
     # no test reads or writes the developer's latched theme, and none inherits a theme override
     monkeypatch.setenv(ENV_PREFS, str(tmp_path / "prefs.json"))
     monkeypatch.delenv(ENV_THEME, raising=False)

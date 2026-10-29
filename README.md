@@ -3,12 +3,28 @@
 One of the [ASI FuSa tools](https://github.com/c00289/c00289/blob/main/README.md) by Roy Mendoza; the master README there lists every sibling.
 
 A functional-safety (FuSa) working-knowledge API for the Wheel Loader programme, with a
-command line and a tkinter desktop window on top. Version **0.8.4**, alpha. Named after
+command line and a tkinter desktop window on top. Version **0.9.0**, alpha. Named after
 Melvil Dewey: one classification scheme, many views.
 
 The idea, in one sentence: a database is the single source of truth, the Excel workbook
 is a generated *view* of it, and everything a human can do through a front end an AI agent
 can do through the same commands.
+
+## What is in 0.9.0
+
+- **Control structures**, phase 2 of docs/control-structure-plan.md: seven entities (schema
+  version 3, a 0.8.x database opens with the seven tables added and nothing else changed), the
+  service rules, a factory with five builders (`blank`, `template:wheel_loader_master` from the
+  private shelf, `from_drawio`, `from_datasets`, `clone`), `to_diagram` as the one place rows
+  become a drawing, and the `cs` verbs: `list`, `get`, `builders`, `new`, `duplicate`, `delete
+  [--cascade]`, `validate`, `import`, `export --out <dir> [--format ...] [--all] [--no-ocr]`.
+  The export goes through asi_escher 0.2.0 (`drawio` and `png` by default, `svg` too) with the
+  OCR gate on, and the `Result` says whether the picture is competent. See
+  [Control structures](#control-structures). The screen is phase 3 (0.10.0); until then the
+  seven entities have no window of their own and the Dashboard tiles the structures only.
+- `FieldType.JSON`: a list in a text column, one item per line in a form, JSON text in a sheet.
+- `delete --cascade` on the generic verb, for a structure, a controller or an edge.
+- `uv.lock` takes asi_escher 0.2.0, asi_gutenberg 0.9.0 and asi_hopper 0.1.9.
 
 ## What is in 0.8.4
 
@@ -226,9 +242,11 @@ because it is specific to one machine; copy `dewey.example.toml` to start. Prece
 every path is the explicit argument (`--db`, `--out`), then the environment (`ASI_DEWEY_DB`,
 `ASI_DEWEY_WORKBOOK`, `ASI_DEWEY_OUT`), then `dewey.toml`, then `./dewey.db`, `dewey.xlsx`
 and `out/` next to the database. `status` reports all three as `database`, `workbook_path`
-and `out_dir`. Two more keys are plain settings, not paths: `jira_jql` (what `jira sync`
-caches) and `jira_live_jql` (what `jira live` fetches); see [Jira](#jira) and
-`dewey.example.toml`. `jira_live_autofetch` (0.7.3 to 0.8.0) is ignored since 0.8.1, with any
+and `out_dir`. A fourth path, `control_structures_dir` (default `../asi_standards/control-structures`,
+`$ASI_DEWEY_CONTROL_STRUCTURES` overrides it), is the private shelf the `template:wheel_loader_master`
+builder reads; see [Control structures](#control-structures). Two more keys are plain settings, not
+paths: `jira_jql` (what `jira sync` caches) and `jira_live_jql` (what `jira live` fetches); see
+[Jira](#jira) and `dewey.example.toml`. `jira_live_autofetch` (0.7.3 to 0.8.0) is ignored since 0.8.1, with any
 other unknown key.
 
 ## Quick start
@@ -577,6 +595,101 @@ A document builder returns an `asi_gutenberg.Document` and adds catalog diagrams
 `asi_dewey.generate.figures.add_figure(doc, brain, "lifecycle_overview", caption=...)`, which
 attaches an Escher diagram block that Gutenberg renders into `figures/` beside the Markdown.
 
+## Control structures
+
+STPA begins with a control structure: the controllers, what each is responsible for, the
+algorithms it runs, the process model it decides on, and the control actions down and the
+feedback up between them. Since 0.9.0 Dewey holds control structures as rows
+(docs/control-structure-plan.md, phase 2), builds them through a factory, and draws them with
+[asi_escher](../asi_escher) 0.2.0's `control_structure` kind. Dewey never draws anything itself:
+"all image stuff is handled through escher", and every export runs escher's OCR gate on the PNG
+"so that the final diagrams are competent". The screen is phase 3 (0.10.0).
+
+**Entities** (schema version 3). One `control_structure` (name, slug, system, description, source,
+status Draft / Reviewed / Baselined, revision) holds everything; every part names its structure by
+slug and its parent by key, so rows survive any export and import and a later STPA step can point at
+a controller by key and a signal by `CA-13`:
+
+| Entity | Sheet | Fields beyond `structure` and `order` |
+|---|---|---|
+| `cs_controller` | CS controllers | key, name, kind (controller, human_controller, controlled_process, environment, sensor, actuator, external_system), responsibility, process_model_title, note |
+| `cs_algorithm` | CS algorithms | controller, code (`V1`), name |
+| `cs_process_model_entry` | CS process model | controller, heading, control_actions, variables, updated_by, references (lists) |
+| `cs_edge` | CS edges | key (`e7`), kind (control_action, feedback), source, target (controller keys) |
+| `cs_signal` | CS signals | edge, signal_id (`CA-01`, `FB-12`), kind, name, placeholder |
+| `cs_note` | CS notes | text, attached_to (a controller key, or empty) |
+
+The lists are `FieldType.JSON`: a JSON array in a text column, read back as a list, edited one item
+per line, carried as JSON text in the workbook. The service rules hold on every verb that writes a
+row: a part names a structure and a parent that exist; a controller's key (from its name when not
+given) and an edge's key (the next free `eN`) are unique within the structure; a signal's kind
+defaults to its edge's and must match it; a signal id is unique within the structure (a refusal
+when typed, a warning when a file is loaded whole, repeated by `cs validate`); a control action
+pointing up the hierarchy (by the controllers' `order`) or feedback pointing down is a warning,
+never a refusal; a structure with parts, a controller with dependants or an edge with signals is
+deleted with `--cascade` or not at all (the generic `delete` takes `--cascade` too); a note
+attached to a deleted controller stays, detached. Every change publishes `cs.changed` with the
+structure's slug; a dataset loaded whole publishes one.
+
+**The factory** (`asi_dewey.stpa.factory.ControlStructureFactory`, `brain.factory`) builds a
+structure from a plain dataset through the service, so every structure obeys the same rules
+whichever **builder** made it:
+
+| Builder | Reads | Options |
+|---|---|---|
+| `blank` | nothing | `--name`, `--system` |
+| `template:wheel_loader_master` | the owner's structure from `<control_structures_dir>/wheel-loader/datasets/` (private; listed as unavailable when absent) | `--name`, `--system` |
+| `from_drawio` | a draw.io file, escher's own or hand-drawn (`stpa/drawio_reader.py`, standard library only, the owner's parser ported) | `--from <file>` |
+| `from_datasets` | the six JSON files of a datasets folder (the Roy's Brain envelope) | `--from <folder>` |
+| `clone` | an existing structure | `--from <id-or-slug>`, `--name` |
+
+`to_diagram(structure)` is the one place that decides how rows become the drawing (a controller a
+box of its kind with its algorithms and its process model, an entry drawn as `- heading: variables;
+updated by ...`; an edge a control action or feedback carrying its signal lines `CA-01 Mission data`
+in order; a note attached to its controller), so an export and the window's preview can never
+disagree. The round trip holds: a file written by escher from `to_diagram` reads back to the same
+rows (keys, names, kinds, responsibilities, algorithms, process models, edges, signals, notes); only
+the controllers' `order` is the layout's, because the drawing ranks by hierarchy.
+
+**Verbs**:
+
+```powershell
+asi-dewey cs list                                   # every structure with its counts
+asi-dewey cs get wheel_loader                       # one structure and all its parts (id, uid or slug)
+asi-dewey cs builders                               # the builders, available or not and why
+asi-dewey cs new blank --name "Demo loader" --system "Demo loader"
+asi-dewey cs new template:wheel_loader_master       # the owner's structure, from the private shelf
+asi-dewey cs new from_drawio --from structure.drawio --name "Imported"
+asi-dewey cs import structure.drawio                # from_drawio or from_datasets by what the path is
+asi-dewey cs duplicate wheel_loader --name "Wheel loader rev B" [--slug wl_b]
+asi-dewey cs validate wheel_loader                  # every rule on the stored rows: errors and warnings
+asi-dewey cs export wheel_loader --out exports      # <out>/wheel_loader.drawio and .png
+asi-dewey cs export wheel_loader --out exports --format svg --format drawio --no-ocr
+asi-dewey cs export wheel_loader --out exports --all
+asi-dewey cs delete wheel_loader --cascade
+asi-dewey create cs_signal --set structure=wheel_loader --set edge=e3 --set signal_id=CA-11 --set name="Pause"
+```
+
+**Formats and the OCR verdict**. The format set is escher's (`drawio`, `png`, `svg`); the default
+is `drawio` and `png`, the file to edit (in draw.io or the VS Code draw.io extension, every box
+where escher put it) and the picture to look at. `export` calls `asi_escher.build` with
+`provenance=True` and, unless `--no-ocr`, `ocr=True`: escher reads the PNG back with the Windows
+OCR engine and checks every box title, algorithm code, process-model title and signal id. The
+`Result` carries `files`, `paths`, `primary`, `size`, `nodes`, `edges`, `issues`, `layout_issues`
+(the issues that are not OCR), `ocr` (escher's report: `verdict`, `competent`, `found`, `missing`,
+`line_count`) and `ocr_verdict`: `competent`, `unreadable: <labels>`, `ocr unavailable: <why>` (no
+engine, as on CI; never a failure), `ocr skipped` (`--no-ocr`) or `no png written`. Every issue is
+repeated as a warning; the export is audited as `cs.export` and published as `cs.exported`.
+Without `--out` the files go to `control_structures/` under the out folder.
+
+**The real structure is private.** The owner's wheel loader master structure lives in
+asi_standards `control-structures/wheel-loader/` (the draw.io source, the parser, the six
+datasets, hashed) and in his database; `control_structures_dir` in `dewey.toml` (default
+`../asi_standards/control-structures`, `$ASI_DEWEY_CONTROL_STRUCTURES` overrides it) is where the
+template builder reads it. This repository holds none of it: the tests build a synthetic
+eight-box structure with invented names, and one local-only test on the private datasets asserts
+counts and files, never text, and is skipped where the shelf is absent.
+
 ## Layout
 
 ```
@@ -586,11 +699,13 @@ src/asi_dewey/
   brain.py            Brain: wires everything, the in-process API, dewey.toml loading
   locks.py            the family lock: one primary tool at a time, $ASI_PRIMARY_LOCK_DIR
   prefs.py            per-person preferences (the latched theme) in prefs.json, $ASI_DEWEY_PREFS
-  schema/             FieldSpec, EntitySchema, lookups, registry, definitions (the 9 entities)
+  schema/             FieldSpec, EntitySchema, lookups, registry, definitions (the 16 entities)
   models/             ModelFactory (dataclasses from schemas)
   storage/            Storage interface, SQLite backend, migrations, audit log, StorageFactory
   repositories/       SqlRepository, RepositoryFactory
-  services/           EntityService (validated CRUD), TransferService (dump/load/export/import), shared queries
+  services/           EntityService (validated CRUD), TransferService (dump/load/export/import), shared queries,
+                      control_structure_service.py (the rules of the seven entities, the structure-level operations)
+  stpa/               ControlStructureFactory (builders, to_diagram, export through asi_escher), drawio_reader.py
   commands/           Result, Command, CommandFactory, Dispatcher, built-in verbs
   io/                 JSON and Excel exporters and importers behind factories
   generate/           DiagramFactory, DocumentFactory, Spec/Param, the diagram and document catalogs, figures.py
@@ -598,8 +713,9 @@ src/asi_dewey/
                       server a window owns) and session.py (the session file the CLI reads to find it)
   gui/                tkinter: MainWindow, ScreenFactory, WidgetFactory, entity/dashboard/transfer/generate screens,
                       theme.py (ThemeFactory, GridTheme) and palettes.py (the family palette, pure data)
-tests/                pytest suite (schema, core, transfer, generate, jira, locks, CLI, GUI, theme, server, session);
-                      fixtures/dewey-0.7.4.db, a small 0.7.4 database for the open-and-stamp test
+tests/                pytest suite (schema, core, transfer, generate, jira, locks, CLI, GUI, theme, server, session,
+                      control structures); fixtures/dewey-0.7.4.db and dewey-0.8.4.db, small databases of those
+                      versions for the migration tests
 ```
 
 ## Tests
@@ -622,10 +738,16 @@ make their requests from a helper thread while pumping `window.update()`.
 
 The files, one per layer: `test_schema.py`, `test_core.py`, `test_transfer.py`, `test_generate.py`,
 `test_jira.py` (asi_hopper's replay fixtures; skipped when the sibling is not checked out),
-`test_locks.py`, `test_cli.py`, `test_gui.py`, `test_theme.py`, `test_server.py` and
-`test_session.py`; `conftest.py` holds the isolation fixture and the `brain`, `seeded` and `hold`
-fixtures. `test_core.py` opens a copy of `tests/fixtures/dewey-0.7.4.db` (never the file itself) to
-check that a 0.7.x database opens as 0.8.0 with every row stamped and nothing else changed.
+`test_locks.py`, `test_cli.py`, `test_gui.py`, `test_theme.py`, `test_server.py`, `test_session.py`
+and `test_control_structures.py`; `conftest.py` holds the isolation fixture and the `brain`, `seeded`
+and `hold` fixtures. `test_core.py` opens a copy of `tests/fixtures/dewey-0.7.4.db` (never the file
+itself) to check that a 0.7.x database opens as 0.8.0 with every row stamped and nothing else
+changed; `test_control_structures.py` does the same with `dewey-0.8.4.db` for the seven tables of
+0.9.0. The control-structure tests run escher's OCR gate monkeypatched to "competent", so they pass
+on CI without the engine; one test runs the real engine on the synthetic structure and is skipped
+where the engine is absent; one local-only test loads the private datasets when they are beside the
+repo and asserts counts and files, never text. `$ASI_DEWEY_CONTROL_STRUCTURES` is pointed at an
+absent folder for every test, so no test finds the private shelf by accident.
 
 ## Adding an entity
 

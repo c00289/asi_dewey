@@ -11,6 +11,113 @@ All notable changes to ASI Dewey are recorded here. The format follows
 - Excel import diff preview; `fill` / `submit` / `cancel` puppeting of a screen's form; a
   `View > Automation` submenu or screen; date picker widget.
 
+## [0.9.0] - 2026-10-29
+
+Control structures, phase 2 of docs/control-structure-plan.md. The owner, 2026-10-29: "introduce a
+screen that is used as a CRUD for STPA control structures; the idea is that we would be able to use
+the factory design pattern to build a control structure, or many; we need to make control structures
+like the one in Roy's Brain, feel free to use the schema; users make control architectures that we
+will use for STPA later, and the user can export them to their folder of preference, selecting the
+format ... the default must be drawio png"; and, of every diagram, "use OCR on the PNG so that the
+final diagrams are competent" and "all image stuff is handled through escher". Phase 1 shipped as
+asi_escher 0.2.0 (the `control_structure` kind, `to_drawio`, the format set, the OCR gate); this is
+the entities, the rules, the factory, the reader and the verbs. The screen is phase 3 (0.10.0).
+Schema version 2 to 3.
+
+### Added
+- **Seven entities** (`schema/definitions.py`): `control_structure` (name, slug, system, description,
+  source, status Draft / Reviewed / Baselined, revision) and its parts `cs_controller` (key, name,
+  kind, responsibility, process_model_title, note), `cs_algorithm` (controller, code, name),
+  `cs_process_model_entry` (controller, heading, control_actions, variables, updated_by, references),
+  `cs_edge` (key, kind, source, target), `cs_signal` (edge, signal_id, kind, name, placeholder) and
+  `cs_note` (text, attached_to). Every part names its structure by slug and its parent by key, so the
+  rows survive any export and import (a workbook sheet carries no id column) and a later STPA step can
+  point at a controller by key and a signal by its id. One sheet each in the workbook (`CS
+  structures` ... `CS notes`); the JSON dump carries them with every other entity. Lookups
+  `cs_status`, `cs_controller_kind` (asi_escher's `CONTROL_NODE_KINDS`) and `cs_edge_kind`.
+- **`FieldType.JSON`** (`schema/fields.py`): a JSON array in a text column, read back as a list
+  (`coerce_list`: a list as it is, a JSON array parsed, any other text one item per line, blank is the
+  empty list), written as JSON text in a workbook cell, edited one item per line in a form
+  (`gui/widgets.py` `ListWidget`). The idea of the people lists of asi_kletz 0.19.0.
+- **The service rules** (`services/control_structure_service.py`, one `EntityService` subclass per
+  entity, chosen by `service_class`, so they hold on every verb that writes a row): a part names a
+  structure and a parent that exist; a controller's key (from its name when not given) and an edge's
+  key (the next free `eN`) are unique within the structure and immutable while rows point at them; a
+  signal's kind defaults to its edge's and must match it; an edge cannot change kind under its
+  signals; a signal id is unique within the structure, a refusal when typed and a warning when a
+  dataset is loaded whole (the owner's structure carries a few inherited duplicates; `cs validate`
+  repeats them); a control action pointing up the hierarchy (the controllers' `order`) or feedback
+  pointing down is a warning, never a refusal; a structure with parts, a controller with dependants
+  (its algorithms, process-model entries, the edges touching it and their signals; a note attached to
+  it stays, detached) or an edge with signals is deleted with `cascade` or refused; the structure's
+  slug is unique and immutable while parts exist. `EntityService` gained the hooks `check`,
+  `before_delete` and `after_change` and `delete(..., cascade=)`; `SqlRepository.delete_where`.
+  `ControlStructureService` (`brain.control_structures`): `resolve` by id, uid or slug, `parts`,
+  `dataset` (the plain form), `create_from_dataset` (one transaction, audited once as `cs.new`),
+  `validate`, `delete`, `duplicate` (a deep copy under a new slug, status Draft, revision 1, audited as
+  `cs.duplicate`). Events: `cs.changed` (structure, entity, action, id, actor) after every change, one
+  for a dataset loaded whole; `cs.exported` after an export.
+- **The factory** (`stpa/factory.py`, `brain.factory`): `ControlStructureFactory` with a registry of
+  builders, each `(brain, options) -> dataset` with an availability check: `blank`,
+  `template:wheel_loader_master` (reads `<control_structures_dir>/wheel-loader/datasets/`; listed as
+  unavailable with the reason when absent), `from_drawio`, `from_datasets`, `clone`;
+  `register_builder` adds one; `catalog()` for a window's "New from". `to_diagram(structure)` is the
+  one place rows become an `asi_escher.Diagram` (`control_structure` kind): a controller a box of its
+  kind with its algorithms as `(code, name)` and its process model as `(title, entries)`, an entry
+  drawn `- heading: variables; updated by ...` (the dash is how the reader tells one entry from the
+  wrapped rest of the previous one); an edge a control action or feedback with its signal lines
+  `CA-01 Mission data` in order; a note attached to its controller. `export(structure, out, formats,
+  ocr=True)` calls `asi_escher.build` with `provenance=True` and the OCR gate on, under
+  `catch_warnings` as `generate/figures.py` does, and returns the files written, `size`, `nodes`,
+  `edges`, `issues`, `layout_issues`, escher's `ocr` report and `ocr_verdict`; audited as `cs.export`.
+- **The draw.io reader** (`stpa/drawio_reader.py`, standard library only): the owner's
+  `control_structure_to_datasets.py` ported (containers by geometry, the Responsibility box, the
+  process-model box with its bullets, the `V1 — Name` algorithm boxes, free notes to the nearest
+  controller, `CA-02/03/04` expanded, kinds from the style or a `kinds` map) and, for a file
+  escher wrote (`host="asi_escher"`), the box's HTML sections read back exactly: the responsibility by
+  the greedy-wrap rule, the algorithms by their codes, the entries by their dashes.
+  `read_dataset_folder` reads the six envelope files (`id` to `key` or `code`, `controller_id` to
+  `controller`, `edge_id` to `edge`, stray `items` kept as variables, a signal without an id skipped
+  with a warning, a `mixed` edge taking its first signal's kind).
+- **The `cs` verb** (`commands/cs.py`): `list | get <id> | builders | new <builder> [--name --slug
+  --system --from <file>] | duplicate <id> --name [--slug] | delete <id> [--cascade] | validate <id>
+  | import <drawio-or-folder> | export <id> [--out <dir>] [--format drawio|png|svg]... [--all]
+  [--no-ocr]`; a structure by id, uid or slug; the default formats `drawio` and `png`; without
+  `--out` the files go to `control_structures/` under the out folder. Every answer a JSON `Result`,
+  every issue of an export repeated as a warning, `validate` with `ok` false when a rule is broken.
+  The generic `delete` takes `--cascade`.
+- **Configuration**: `control_structures_dir` in `dewey.toml` (a path, relative to the file;
+  default `../asi_standards/control-structures` beside the working directory;
+  `$ASI_DEWEY_CONTROL_STRUCTURES` overrides it); `status` reports it as `control_structures_dir`.
+- `tests/fixtures/dewey-0.8.4.db`: a small 0.8.4 database for the migration test.
+
+### Changed
+- **Schema version 3.** A 0.8.x database opens with the seven tables created, nothing altered, no
+  row touched; the 0.7.4 fixture test counts them. The Dashboard tiles the structures and not the
+  six part entities (`gui/dashboard.py` `UNTILED`); the seven are in `HIDDEN_ENTITY_SCREENS` until
+  their screen (0.10.0), so the window keeps its ten screens.
+- The dispatcher checks a repeatable argument's `choices` item by item (`--format svg --format
+  drawio` was refused as a list).
+- `uv.lock` takes asi_escher 0.2.0 (the `control_structure` kind, `to_drawio`, `FORMATS`,
+  `DEFAULT_FORMATS`, the OCR gate), asi_gutenberg 0.9.0 and asi_hopper 0.1.9, what their checkouts
+  declare.
+
+### Tests
+- 200 to 222. `test_control_structures.py`: a synthetic eight-box structure with invented names built
+  through the factory; the JSON field; every rule and refusal; the direction warning; duplicate
+  signal ids as warnings; cascade delete of a controller, an edge and a structure, with the
+  refusals; duplicate and the clone builder; validate on rows broken behind the service; every `cs`
+  verb and the command line; the export writing drawio and png by default with the OCR gate
+  monkeypatched to "competent" (the expected labels, the provenance, the audit and the event,
+  `--all`, `--no-ocr`, an unreadable label and an unavailable engine as issues and warnings); one
+  real-engine test skipped where the engine is absent; the round trip draw.io to rows to draw.io
+  (the same rows, the controllers' order the layout's); `to_diagram`; the hand-drawn reader on a
+  synthetic file; `from_datasets` and the template builder on a synthetic envelope folder, through
+  the environment and through `dewey.toml`; dump/load and the workbook round trips; the 0.8.4
+  migration; the hidden screens and the one tile; a local-only smoke test on the private datasets
+  (counts and files only, skipped elsewhere). The existing tests count sixteen entities and the
+  seven sheets. The suite points `$ASI_DEWEY_CONTROL_STRUCTURES` at an absent folder.
+
 ## [0.8.4] - 2026-10-29
 
 The family's integration review of 2026-10-29. No behaviour changes; schema version unchanged (2).

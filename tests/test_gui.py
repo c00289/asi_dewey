@@ -102,7 +102,11 @@ def test_pruned_screens_are_absent(window, seeded):
     from asi_dewey.errors import NotFound
     from asi_dewey.gui.screens import HIDDEN_ENTITY_SCREENS
 
-    assert HIDDEN_ENTITY_SCREENS == frozenset({"jira_ticket", "safety_plan_row"})
+    assert HIDDEN_ENTITY_SCREENS == frozenset({  # the control structure and its parts wait for 0.10.0's screen
+        "jira_ticket", "safety_plan_row",
+        "control_structure", "cs_controller", "cs_algorithm", "cs_process_model_entry", "cs_edge", "cs_signal",
+        "cs_note",
+    })
     keys = [k for k, _ in window.factory.items()]
     for key in ("entity:jira_ticket", "entity:safety_plan_row", "safety_plan_matrix"):
         assert key not in keys and key not in window.factory
@@ -129,7 +133,7 @@ def test_pruned_screens_are_absent(window, seeded):
     assert "JIRA" not in rows and not any(row.startswith("SAFETY PLAN") for row in rows)
     # the entities stay: tables, commands and counts are untouched
     assert "jira_ticket" in seeded.registry and "safety_plan_row" in seeded.registry
-    assert len(seeded.registry) == 9
+    assert len(seeded.registry) == 16
     assert seeded.execute("count", entity="safety_plan_row").data["count"] == 1
     # the dashboard still counts both; neither tile is clickable: no screen opens for a hidden entity
     dash = window.current
@@ -147,7 +151,7 @@ def test_hidden_set_must_name_registered_entities(seeded):
     with pytest.raises(ValueError):
         build_default_screens(seeded, hidden=frozenset({"unicorn"}))
     keys = [k for k, _ in build_default_screens(seeded, hidden=frozenset()).items()]
-    assert len(keys) == 12 and "entity:jira_ticket" in keys and "entity:safety_plan_row" in keys
+    assert len(keys) == 19 and "entity:jira_ticket" in keys and "entity:safety_plan_row" in keys  # 16 entities + 3
 
 
 def test_event_bus_refreshes_open_screen(window, seeded):
@@ -737,8 +741,8 @@ def test_entity_screen_columns_are_the_visible_fields_minus_order(window, seeded
         assert [screen.tree.heading(c, "text") for c in screen.columns] == [schema.field(c).header for c in expected]
         assert "uid" not in screen.widgets and ("order" in screen.widgets) == schema.has("order")
         assert set(screen.widgets) == {f.name for f in schema.visible_fields}
-        if key not in window.factory:  # the two HIDDEN_ENTITY_SCREENS, built here only to check the rule
-            assert schema.name in ("jira_ticket", "safety_plan_row")
+        if key not in window.factory:  # the HIDDEN_ENTITY_SCREENS, built here only to check the rule
+            assert schema.name in ("jira_ticket", "safety_plan_row") or schema.name.startswith(("cs_", "control_"))
             if schema.name == "safety_plan_row":
                 assert len(flags) > MAX_FLAG_COLUMNS and not any(schema.field(c).is_flag for c in screen.columns)
             screen.destroy()

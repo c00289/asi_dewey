@@ -1,6 +1,7 @@
 # Control structures: a CRUD screen, a factory, and four ways out
 
-Status: **Planned** (written 2026-10-29). Owner's ask of 2026-10-29: "introduce a screen that is used as a
+Status: **Phase 1 shipped in asi_escher 0.2.0, phase 2 shipped in asi_dewey 0.9.0** (2026-10-29); phase 3,
+the screen, is next. Written 2026-10-29. Owner's ask of 2026-10-29: "introduce a screen that is used as a
 CRUD for STPA control structures; the idea is that we would be able to use the factory design pattern to
 build a control structure, or many; we need to make control structures like the one in Roy's Brain, feel
 free to use the schema; users make control architectures that we will use for STPA later, and the user can
