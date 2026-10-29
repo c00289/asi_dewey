@@ -11,6 +11,18 @@ All notable changes to ASI Dewey are recorded here. The format follows
 - Excel import diff preview; `fill` / `submit` / `cancel` puppeting of a screen's form; a
   `View > Automation` submenu or screen; date picker widget.
 
+## [0.8.4] - 2026-10-29
+
+The family's integration review of 2026-10-29. No behaviour changes; schema version unchanged (2).
+
+### Changed
+- `uv.lock` follows the siblings: asi_escher 0.1.1 to 0.1.3, asi_gutenberg 0.6.0 to 0.7.1, asi_hopper
+  0.1.6 to 0.1.7 (what their `main` branches declare, which is what CI checks out). Every name Dewey
+  imports from them (`Diagram`, `LayoutWarning`, `THEME`, `build`; `Document`, `build`; `Hopper`,
+  `LIST_FIELDS`, `AuthRequired`, `GatewayError`, `HopperError`) exists unchanged at those versions; the
+  additions (`fill_docx`, the Confluence verbs, `WriteSideClosed`) are not called here, and
+  `tests/test_jira.py` replays asi_hopper 0.1.7's fixture index as before.
+
 ## [0.8.3] - 2026-10-29
 
 A broken-windows sweep of 2026-10-29: the wheel-over-a-combobox hazard asi_kletz 0.15.2 fixed
@@ -671,7 +683,8 @@ First alpha. Core only, no screens.
 - pytest suite covering schema coercion, CRUD, audit, events, transfer round trips, and the CLI.
 - README and this changelog.
 
-[Unreleased]: https://example.invalid/asi-dewey/compare/v0.8.3...HEAD
+[Unreleased]: https://example.invalid/asi-dewey/compare/v0.8.4...HEAD
+[0.8.4]: https://example.invalid/asi-dewey/compare/v0.8.3...v0.8.4
 [0.8.3]: https://example.invalid/asi-dewey/compare/v0.8.2...v0.8.3
 [0.8.2]: https://example.invalid/asi-dewey/compare/v0.8.1...v0.8.2
 [0.8.1]: https://example.invalid/asi-dewey/compare/v0.8.0...v0.8.1

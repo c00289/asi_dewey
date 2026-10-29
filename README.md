@@ -3,12 +3,19 @@
 One of the [ASI FuSa tools](https://github.com/c00289/c00289/blob/main/README.md) by Roy Mendoza; the master README there lists every sibling.
 
 A functional-safety (FuSa) working-knowledge API for the Wheel Loader programme, with a
-command line and a tkinter desktop window on top. Version **0.8.3**, alpha. Named after
+command line and a tkinter desktop window on top. Version **0.8.4**, alpha. Named after
 Melvil Dewey: one classification scheme, many views.
 
 The idea, in one sentence: a database is the single source of truth, the Excel workbook
 is a generated *view* of it, and everything a human can do through a front end an AI agent
 can do through the same commands.
+
+## What is in 0.8.4
+
+- **The lock follows the siblings.** `uv.lock` takes asi_escher 0.1.3, asi_gutenberg 0.7.1 and
+  asi_hopper 0.1.7, what their `main` branches declare and what CI checks out (it said 0.1.1, 0.6.0
+  and 0.1.6). Nothing of Dewey's code changed: every name it imports from them exists unchanged at
+  those versions, and the additions (`fill_docx`, the Confluence verbs) are not called here.
 
 ## What is in 0.8.3
 
