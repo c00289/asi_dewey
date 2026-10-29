@@ -24,8 +24,10 @@ the formats they want; there must be Select all / Select none buttons; the defau
   produces every node's x, y, width, height and every edge's routed points: exactly what a draw.io file needs.
 - **asi_dewey** is the working-knowledge API with the schema-driven entities, the CLI, the window and the
   Escher/Gutenberg views; STPA knowledge belongs here. Kletz plans the deliverables and stays out of it.
-- **draw.io desktop is not installed on the owner's machine today.** The drawio PNG and SVG formats are
-  draw.io's own exports (`draw.io.exe --export`); without the program they cannot be made. See section 7.
+- **draw.io desktop is not installed and will not be** (the owner, 2026-10-29: "no drawio; generate the
+  drawio file and we can use the VS Code preview to see it"). The `.drawio` file is therefore the product
+  of the drawio family, viewed and edited with the VS Code draw.io extension; its picture comes from
+  escher, which laid it out. See section 4.
 - **The compactor STPA and the wheel loader structure are ASI-internal.** asi_dewey and asi_escher are
   public repositories: the real structure never enters them. Tests and demos use a synthetic structure
   with neutral names; the real one lives in the owner's database, imported from his draw.io file, and may
@@ -90,23 +92,21 @@ edge an arrow. Every export and the window's preview go through it, so they can 
   `mxPoint` waypoints, styles that match the renderer's colours. draw.io opens it with every box where
   escher put it: "drawio makes drawings by getting the positioning from the automatically positioned
   pydraw". The file is also the editable master a person can refine in draw.io by hand.
-- **`render_with_drawio(drawio_path, fmt, out_path)`**: draw.io desktop's export (`draw.io.exe --export
-  --format png|svg --output <file> <drawio>`, scale 2 for PNG), located from `drawio_exe` in the
-  configuration, else `%LOCALAPPDATA%\Programs\draw.io\draw.io.exe`, else `C:\Program Files\draw.io\`,
-  else `drawio` on PATH. The process it starts is ended afterwards, as Gutenberg does with Word. Absent, a
-  clear refusal naming the installer, never a silent substitute (the owner asked for draw.io's picture).
+- **No draw.io program is involved.** The `.drawio` file is viewed with the VS Code draw.io extension
+  (`hediet.vscode-drawio`), which also edits it in place and can export a picture by hand when one is
+  wanted from draw.io itself. The pictures the tool writes are escher's, from the same positions the file
+  carries, so the PNG matches what the preview shows.
 - **Formats** as one enumeration shared by escher, Dewey and the window:
 
   | Key | Produces | Made by |
   |---|---|---|
-  | `pydraw-png` | `<slug>.pydraw.png` | escher's renderer |
-  | `pydraw-svg` | `<slug>.pydraw.svg` | escher's renderer |
-  | `drawio-png` | `<slug>.drawio.png` (and `<slug>.drawio`) | draw.io desktop from the written file |
-  | `drawio-svg` | `<slug>.drawio.svg` (and `<slug>.drawio`) | draw.io desktop from the written file |
-  | `drawio` | `<slug>.drawio` | escher's writer |
+  | `drawio` | `<slug>.drawio` | escher's writer, the positions of its layout |
+  | `png` | `<slug>.png` | escher's renderer, the same layout |
+  | `svg` | `<slug>.svg` | escher's renderer, the same layout |
 
-  Any drawio format writes the `.drawio` file first; selecting `drawio` alone writes only that. The
-  default selection is `drawio-png`. `asi-escher export <spec.json> --format drawio-png --format pydraw-svg --out <dir>` on the command line.
+  The default selection is `drawio` and `png` together (the file to edit, the picture to look at), which
+  is what the owner's "drawio png" becomes without the draw.io program. `asi-escher export <spec.json>
+  --format drawio --format png --out <dir>` on the command line.
 
 ## 5. The screen (asi_dewey window)
 
@@ -123,10 +123,11 @@ wheel rule of Kletz 0.15.2, unique Treeview iids):
   one item per line.
 - **Right**: the preview, escher's PNG of the structure re-rendered after every save (off the UI thread,
   the file in the out folder's `figures/`), with a "Open in draw.io" button when draw.io is installed.
-- **Export… dialog**: the destination folder (remembered in the preferences, the last one used), the five
-  format check boxes with **Select all** and **Select none**, `drawio-png` checked by default, a Preview of
-  the file names, Export. Formats draw.io cannot make are shown disabled with the reason when it is not
-  installed. The result names every file written in the status bar and in the Result an agent reads.
+- **Export… dialog**: the destination folder (remembered in the preferences, the last one used), the three
+  format check boxes with **Select all** and **Select none**, `drawio` and `png` checked by default, a
+  Preview of the file names, Export; an **Open in VS Code** button on the written `.drawio` file (`code
+  <file>`) when VS Code is on the PATH. The result names every file written in the status bar and in the
+  Result an agent reads.
 - The automation server exposes the screen (`/screen {"show": "control_structures"}`) and the verbs, so an
   agent can build or export a structure the way it drives everything else.
 
@@ -139,22 +140,20 @@ Result, audited, an event per change (`cs.changed`, `cs.exported`), as the rest 
 
 ## 7. Decisions for the owner
 
-1. **Install draw.io desktop** (the free app; its command line is what makes `drawio-png`, the default).
-   Until it is installed the default format cannot be produced and the dialog says so; the other three
-   work. If installing it is not possible on the corporate machine, the fallback would be escher rendering
-   the PNG from the same positions and naming it `drawio-png` anyway, which the plan does not do without
-   his say-so.
-2. **Where the real wheel loader structure lives**: his database only (imported once from the Brain's
-   draw.io file), or also as datasets under asi_standards (private) so it is versioned with the other
-   controlled material. The public repositories never hold it either way.
-3. **Numbering**: keep the compactor-inherited CA/FB numbers (gaps included) or renumber when the structure
-   is baselined. The plan keeps them.
+1. ~~Install draw.io desktop~~ Decided 2026-10-29: no draw.io program (the MSI needs an elevated install
+   the machine refused); the `.drawio` file plus escher's PNG and SVG are the formats, VS Code previews
+   the file.
+2. ~~Where the real wheel loader structure lives~~ Decided 2026-10-29: checked in and hashed under
+   asi_standards `control-structures/wheel-loader/` (private, ASI-internal), the Dewey template builder
+   reads it from there. The public repositories never hold it.
+3. **Numbering**: keep the compactor-inherited CA/FB numbers (gaps included) as the stable keys; a display
+   number can be added at baseline with the mapping kept automatically. The plan keeps the inherited ids.
 
 ## 8. Phases and versions
 
 | Phase | Repo | Content | Tests |
 |---|---|---|---|
-| 1 | asi_escher 0.2.0 | the `control_structure` kind, layout rules, `to_drawio`, `render_with_drawio`, the format set, CLI `export --format` | a synthetic eight-box structure rendered PNG/SVG, its draw.io XML parsed back (positions equal the layout), the draw.io detection and refusal, the gallery example |
+| 1 | asi_escher 0.2.0 | the `control_structure` kind, layout rules, `to_drawio`, the format set, CLI `export --format` | a synthetic eight-box structure rendered PNG/SVG, its draw.io XML parsed back (positions equal the layout, the file opens in the VS Code extension), the gallery example |
 | 2 | asi_dewey 0.9.0 | the seven entities (schema +1, migration), the service rules, the factory and its builders, `from_drawio` reader, `cs` verbs, export through escher | round trip draw.io → rows → draw.io, cascade delete, duplicate, validation, every verb, a synthetic template dataset |
 | 3 | asi_dewey 0.10.0 | the screen, the export dialog, the preview, the automation surface, README, charter | the window tests of the family: stack, form, dialog defaults (drawio-png), Select all / none, export result |
 | 4 | later | STPA step 1 and 2 on top: unsafe control actions per signal, loss scenarios, the Kletz deliverables "STPA step 1/2" pointing at a baselined structure | — |
