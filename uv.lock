@@ -30,7 +30,7 @@ wheels = [
 
 [[package]]
 name = "asi-dewey"
-version = "0.7.3"
+version = "0.8.3"
 source = { editable = "." }
 dependencies = [
     { name = "asi-escher" },
@@ -82,7 +82,7 @@ dev = [
 
 [[package]]
 name = "asi-gutenberg"
-version = "0.2.1"
+version = "0.6.0"
 source = { editable = "../asi_gutenberg" }
 dependencies = [
     { name = "asi-escher" },
@@ -105,7 +105,7 @@ dev = [
 
 [[package]]
 name = "asi-hopper"
-version = "0.1.4"
+version = "0.1.6"
 source = { editable = "../asi_hopper" }
 dependencies = [
     { name = "keyring" },

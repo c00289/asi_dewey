@@ -3,12 +3,20 @@
 One of the [ASI FuSa tools](https://github.com/c00289/c00289/blob/main/README.md) by Roy Mendoza; the master README there lists every sibling.
 
 A functional-safety (FuSa) working-knowledge API for the Wheel Loader programme, with a
-command line and a tkinter desktop window on top. Version **0.8.2**, alpha. Named after
+command line and a tkinter desktop window on top. Version **0.8.3**, alpha. Named after
 Melvil Dewey: one classification scheme, many views.
 
 The idea, in one sentence: a database is the single source of truth, the Excel workbook
 is a generated *view* of it, and everything a human can do through a front end an AI agent
 can do through the same commands.
+
+## What is in 0.8.3
+
+- **The mouse wheel over a combobox no longer picks a value.** Scrolling a form with the pointer
+  passing over a task class, a link class or any other dropdown changed it one step per notch,
+  silently, and the next Save stored it (Tk's stock `TCombobox` binding; asi_kletz 0.15.2 found
+  it in the owner's Safety Plan). The window drops that binding and the spinbox's once at start:
+  the wheel scrolls, a value changes by a pick or a keystroke only.
 
 ## What is in 0.8.2
 

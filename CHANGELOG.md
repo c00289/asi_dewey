@@ -11,6 +11,25 @@ All notable changes to ASI Dewey are recorded here. The format follows
 - Excel import diff preview; `fill` / `submit` / `cancel` puppeting of a screen's form; a
   `View > Automation` submenu or screen; date picker widget.
 
+## [0.8.3] - 2026-10-29
+
+A broken-windows sweep of 2026-10-29: the wheel-over-a-combobox hazard asi_kletz 0.15.2 fixed
+the same day, found here by inspection before anyone lost a row. Schema version unchanged (2).
+
+### Fixed
+- **The mouse wheel over a combobox picked its next value** (`gui/main_window.py`): Tk 8.6 binds
+  `<MouseWheel>` on the `TCombobox` class to "select the next value", and the form scrolls on the
+  same wheel (`ScrollableFrame` binds it on every widget while the pointer is over the form), so
+  scrolling the form with the pointer passing over a task class, a link class or a use-case field
+  silently changed it, and the next Save stored it. The window drops that class binding (and the
+  spinbox's) once, right after the theme is applied: the wheel scrolls, a value changes only by a
+  pick or a keystroke. Same fix as the sister tool, by convention, not shared code.
+
+### Tests
+- `test_mouse_wheel_over_a_combobox_never_picks_a_value`: wheels twice over the task-class box of
+  a selected row and reads the form back unchanged, then puts Tk's stock binding back to show the
+  same wheel moves the value.
+
 ## [0.8.2] - 2026-10-29
 
 The owner, 2026-10-29: "change the colour of the little widget that you pull up and down or side to
@@ -648,7 +667,9 @@ First alpha. Core only, no screens.
 - pytest suite covering schema coercion, CRUD, audit, events, transfer round trips, and the CLI.
 - README and this changelog.
 
-[Unreleased]: https://example.invalid/asi-dewey/compare/v0.8.1...HEAD
+[Unreleased]: https://example.invalid/asi-dewey/compare/v0.8.3...HEAD
+[0.8.3]: https://example.invalid/asi-dewey/compare/v0.8.2...v0.8.3
+[0.8.2]: https://example.invalid/asi-dewey/compare/v0.8.1...v0.8.2
 [0.8.1]: https://example.invalid/asi-dewey/compare/v0.8.0...v0.8.1
 [0.8.0]: https://example.invalid/asi-dewey/compare/v0.7.4...v0.8.0
 [0.7.4]: https://example.invalid/asi-dewey/compare/v0.7.3...v0.7.4

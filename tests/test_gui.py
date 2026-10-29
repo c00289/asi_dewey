@@ -783,3 +783,28 @@ def test_scrollbar_thumb_is_the_primary(window):
     assert style.lookup("TScrollbar", "background") == p.primary_dim
     assert style.lookup("TScrollbar", "troughcolor") == p.bg  # the trough is the background, the thumb stands on it
     assert dict(style.map("TScrollbar", "background")) == {"active": p.primary}
+
+
+def test_mouse_wheel_over_a_combobox_never_picks_a_value(window, seeded):
+    """0.8.3, found in asi_kletz 0.15.2: Tk's TCombobox class binding picks the next value on the wheel while
+    the form scrolls on the same wheel, so a task class could change under a scrolling pointer and the next
+    Save would store it. The window drops that binding (and the spinbox's) at start."""
+    screen = window.show("entity:task")
+    screen.select(1)
+    widget = screen.widgets["task_class"]
+    assert widget.get() == "administrative"
+    assert window.bind_class("TCombobox", "<MouseWheel>") == ""
+    assert window.bind_class("TSpinbox", "<MouseWheel>") == ""
+    widget.combo.focus_set()
+    widget.combo.event_generate("<MouseWheel>", delta=-120)  # wheel down, the pointer over the box
+    widget.combo.event_generate("<MouseWheel>", delta=-120)
+    assert widget.get() == "administrative" and screen.form_data()["task_class"] == "administrative"
+    # the same wheel with Tk's stock binding back on: the value moves, which is what the window prevents
+    window.bind_class("TCombobox", "<MouseWheel>", "ttk::combobox::Scroll %W [expr {-%D / 120}]")
+    try:
+        widget.combo.event_generate("<MouseWheel>", delta=-120)
+        assert widget.get() == "status"
+    finally:
+        window.unbind_class("TCombobox", "<MouseWheel>")
+    assert screen.form_data()["task_class"] == "status"  # the test moved it; the row in the database did not
+    assert seeded.execute("get", entity="task", id=1).data["task_class"] == "administrative"

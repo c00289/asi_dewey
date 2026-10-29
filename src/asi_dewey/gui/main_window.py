@@ -85,6 +85,12 @@ class MainWindow(tk.Tk):
             _, warning = ThemeFactory.latched()
             self.theme = ThemeFactory.create(ThemeFactory.resolve(theme))
         self.theme.apply(self)
+        # Tk's class binding makes a ttk combobox (and spinbox) pick its next value on the mouse wheel, and
+        # ScrollableFrame scrolls the form on the same wheel, so scrolling with the pointer passing over a
+        # task class or a lifecycle phase silently changed it (asi_kletz 0.15.2 found it in the owner's Safety
+        # Plan). The window drops both class bindings once: the wheel scrolls, a value changes by a pick only.
+        for widget_class in ("TCombobox", "TSpinbox"):
+            self.unbind_class(widget_class, "<MouseWheel>")
         self.factory = factory or build_default_screens(brain)
         self._screens: dict[str, Screen] = {}
         self.current: Screen | None = None
