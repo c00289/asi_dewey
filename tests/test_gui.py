@@ -40,10 +40,12 @@ def window(seeded):
 
 def test_navigation_and_dashboard(window):
     keys = [k for k, _ in window.factory.items()]
-    assert keys == [
+    assert keys[:8] == [
         "dashboard", "entity:task", "entity:fact", "entity:machine_function", "entity:use_case",
-        "entity:link", "entity:qms_document", "entity:person", "transfer", "generate",
+        "entity:link", "entity:qms_document", "entity:person",
     ]
+    assert keys[-2:] == ["transfer", "generate"] and "stpa" in keys  # the STPA analyses screen (0.10.0)
+    assert [k for k in keys if k.startswith("entity:")] == keys[1:8]  # no other entity has a table of its own
     assert window.current.key == "dashboard"
     dash = window.current
     assert dash._tile_vars["fact"].get() == "2"
@@ -102,15 +104,16 @@ def test_pruned_screens_are_absent(window, seeded):
     from asi_dewey.errors import NotFound
     from asi_dewey.gui.screens import HIDDEN_ENTITY_SCREENS
 
-    assert HIDDEN_ENTITY_SCREENS == frozenset({  # the control structure and its parts wait for 0.10.0's screen
+    assert HIDDEN_ENTITY_SCREENS == frozenset({  # the control structure, the STPA analysis and their parts: own screens
         "jira_ticket", "safety_plan_row",
         "control_structure", "cs_controller", "cs_algorithm", "cs_process_model_entry", "cs_edge", "cs_signal",
         "cs_note",
+        "stpa_analysis", "stpa_loss", "stpa_hazard", "stpa_uca", "stpa_scenario", "stpa_constraint",
     })
     keys = [k for k, _ in window.factory.items()]
     for key in ("entity:jira_ticket", "entity:safety_plan_row", "safety_plan_matrix"):
         assert key not in keys and key not in window.factory
-    assert len(keys) == 10  # ten after the prune; JIRA Live Data came in 0.5.0 and went in 0.8.1
+    assert sum(k.startswith("entity:") for k in keys) == 7  # seven after the prune; JIRA Live Data went in 0.8.1
     with pytest.raises(NotFound):
         window.show("safety_plan_matrix")
     with pytest.raises(NotFound):
@@ -128,12 +131,12 @@ def test_pruned_screens_are_absent(window, seeded):
     last = view_menu.index("end")
     assert view_menu.type(last) == "cascade" and view_menu.entrycget(last, "label") == "Theme"
     # the navigation list follows the factory too
-    assert window.nav.size() == 10
+    assert window.nav.size() == len(keys)
     rows = [row.strip() for row in window.nav.get(0, "end")]
     assert "JIRA" not in rows and not any(row.startswith("SAFETY PLAN") for row in rows)
     # the entities stay: tables, commands and counts are untouched
     assert "jira_ticket" in seeded.registry and "safety_plan_row" in seeded.registry
-    assert len(seeded.registry) == 16
+    assert len(seeded.registry) == 22
     assert seeded.execute("count", entity="safety_plan_row").data["count"] == 1
     # the dashboard still counts both; neither tile is clickable: no screen opens for a hidden entity
     dash = window.current
@@ -151,7 +154,8 @@ def test_hidden_set_must_name_registered_entities(seeded):
     with pytest.raises(ValueError):
         build_default_screens(seeded, hidden=frozenset({"unicorn"}))
     keys = [k for k, _ in build_default_screens(seeded, hidden=frozenset()).items()]
-    assert len(keys) == 19 and "entity:jira_ticket" in keys and "entity:safety_plan_row" in keys  # 16 entities + 3
+    assert sum(k.startswith("entity:") for k in keys) == len(seeded.registry) == 22  # every entity gets a table
+    assert "entity:jira_ticket" in keys and "entity:safety_plan_row" in keys and "entity:stpa_uca" in keys
 
 
 def test_event_bus_refreshes_open_screen(window, seeded):
@@ -307,9 +311,11 @@ def test_generate_screen_builds_through_the_verbs(window, seeded, tmp_path):
     assert "generate" in [k for k, _ in window.factory.items()]
     screen = window.show("generate")
     assert [s["key"] for s in screen.catalog["diagram"]] == [
-        "schema_map", "lifecycle_overview", "phase_flow", "task_flow",
+        "schema_map", "lifecycle_overview", "phase_flow", "task_flow", "stpa_trace",
     ]
-    assert [s["key"] for s in screen.catalog["document"]] == ["safety_plan", "status_report", "handbook"]
+    assert [s["key"] for s in screen.catalog["document"]] == [
+        "safety_plan", "status_report", "handbook", "stpa_report",
+    ]
     assert str(screen.open_file_button["state"]) == "disabled" and str(screen.open_folder_button["state"]) == "disabled"
     assert not screen.build_selected().ok  # nothing selected
 
@@ -742,7 +748,9 @@ def test_entity_screen_columns_are_the_visible_fields_minus_order(window, seeded
         assert "uid" not in screen.widgets and ("order" in screen.widgets) == schema.has("order")
         assert set(screen.widgets) == {f.name for f in schema.visible_fields}
         if key not in window.factory:  # the HIDDEN_ENTITY_SCREENS, built here only to check the rule
-            assert schema.name in ("jira_ticket", "safety_plan_row") or schema.name.startswith(("cs_", "control_"))
+            assert schema.name in ("jira_ticket", "safety_plan_row") or schema.name.startswith(
+                ("cs_", "control_", "stpa_")
+            )
             if schema.name == "safety_plan_row":
                 assert len(flags) > MAX_FLAG_COLUMNS and not any(schema.field(c).is_flag for c in screen.columns)
             screen.destroy()

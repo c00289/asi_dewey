@@ -16,7 +16,7 @@ import datetime as dt
 from typing import TYPE_CHECKING, Any
 
 from ..schema import FieldSpec
-from .base import Spec
+from .base import Param, Spec
 from .diagrams import PLAN, one_line, set_flags
 from .factory import register_document
 from .figures import add_figure
@@ -263,4 +263,149 @@ def handbook(brain: Brain, params: dict[str, str]) -> Any:
     doc.appendix("Schema map")
     doc.p("The entities the database holds, with their field and row counts.")
     add_figure(doc, brain, "schema_map", caption="Entities and their row counts")
+    return doc
+
+
+# -- stpa_report --------------------------------------------------------------
+STPA_PURPOSE = (
+    "This document is a working view of one STPA analysis kept in the working-knowledge database: the "
+    "hazards, the unsafe control actions by controller and category, the loss scenarios with their causal "
+    "factors and constraints, every object with the citation of the Confluence page, version and section it "
+    "was read from, and the page's review comments when the analysis came from an evidence bundle. It is "
+    "regenerated from the database on demand; the Confluence page stays the truth for the text."
+)
+CATEGORY_TITLES = {
+    "not_providing": "Not providing",
+    "providing": "Providing",
+    "timing_order": "Incorrect timing or order",
+    "duration": "Stopped too soon or applied too long",
+}
+
+
+def codes_text(items: Any) -> str:
+    return ", ".join(str(x) for x in (items or []))
+
+
+def yes(value: Any) -> str:
+    return "yes" if value else ""
+
+
+def object_key(item: dict[str, Any]) -> str:
+    """How a report names an object: its code, or ``row N`` for a scenario."""
+    if item.get("code"):
+        return str(item["code"])
+    return f"row {item['row']}" if item.get("row") is not None else f"order {item.get('order')}"
+
+
+@register_document(Spec(
+    key="stpa_report", title="STPA report",
+    description="One STPA analysis: hazards, the UCA table by controller and category, the loss scenarios with "
+                "causal factors and constraints, the trace diagram, every object with its citation, and the "
+                "page's review comments as an appendix when the analysis came from a Hopper bundle.",
+    params=(Param("analysis", "The analysis: its id, uid or slug", required=True),),
+))
+def stpa_report(brain: Brain, params: dict[str, str]) -> Any:
+    from ..stpa.stpa_factory import bundle_comments
+
+    row = brain.stpa.resolve(params["analysis"])
+    slug = row["slug"]
+    parts = brain.stpa.parts(slug)
+    doc = new_document(brain, f"STPA report: {row['name']}", "report", subtitle=row.get("system") or "")
+
+    doc.h1("Purpose")
+    doc.p(STPA_PURPOSE)
+    doc.h1("Source")
+    doc.fields([
+        ("Analysis", f"{row['name']} ({slug})"),
+        ("Status", one_line(row.get("status"))),
+        ("Source", one_line(row.get("source_kind"))),
+        ("Page", md_link(row.get("source_page_id"), row.get("source_url")) or one_line(row.get("source_page_id"))),
+        ("Version", "" if row.get("source_version") is None else str(row["source_version"])),
+        ("Body SHA-256", one_line(row.get("source_body_sha256"))),
+        ("Taken at", one_line(row.get("source_taken_at"))),
+        ("Bundle", one_line(row.get("source_bundle"))),
+        ("Control structure", one_line(row.get("control_structure"))),
+    ], "Where the analysis came from")
+
+    doc.h1("Losses")
+    table_or_note(doc, ["Code", "Loss"], [[x["code"], one_line(x.get("text"))] for x in parts["losses"]],
+                  "Losses", "The page lists no losses.")
+
+    doc.h1("Hazards")
+    table_or_note(
+        doc, ["Code", "Parent", "Hazard", "Losses", "Retired"],
+        [[h["code"], one_line(h.get("parent")), one_line(h.get("text")), codes_text(h.get("losses")),
+          yes(h.get("retired"))] for h in parts["hazards"]],
+        "Hazards", "No hazards recorded.",
+    )
+
+    doc.h1("Unsafe control actions")
+    ucas = parts["ucas"]
+    if not ucas:
+        doc.p("No unsafe control actions recorded.")
+    by_controller: dict[str, list[dict[str, Any]]] = {}
+    for u in ucas:
+        by_controller.setdefault(one_line(u.get("controller")) or "Unnamed controller", []).append(u)
+    categories = list(brain.lookups.get("stpa_uca_category", ()))
+    for controller, mine in by_controller.items():
+        doc.h2(controller)
+        rows = []
+        ordered = [u for c in categories for u in mine if u.get("category") == c]
+        ordered += [u for u in mine if u.get("category") not in categories]
+        for u in ordered:
+            status = "retired" if u.get("retired") else ""
+            if u.get("duplicate_of"):
+                status = joined(status, f"duplicate of {u['duplicate_of']}")
+            link = joined(one_line(u.get("cs_controller")), one_line(u.get("cs_signal")))
+            category = u.get("category") or ""
+            rows.append([u["code"], one_line(u.get("control_action")), CATEGORY_TITLES.get(category, category),
+                         one_line(u.get("text")), codes_text(u.get("hazards")), status, link])
+        doc.table(["UCA", "Control action", "Category", "Text", "Hazards", "Status", "Structure"], rows,
+                  f"Unsafe control actions of {controller}")
+
+    doc.h1("Loss scenarios")
+    table_or_note(
+        doc, ["Row", "UCA", "Counterpart", "Types", "Causal factors", "Beliefs", "Constraints"],
+        [["" if s.get("row") is None else str(s["row"]), one_line(s.get("uca")), one_line(s.get("counterpart")),
+          codes_text(s.get("types")), one_line(s.get("causal_factors")), one_line(s.get("beliefs")),
+          codes_text(s.get("constraints"))] for s in parts["scenarios"]],
+        "Loss scenarios", "No loss scenarios recorded.",
+    )
+
+    doc.h1("Constraints")
+    named_by: dict[str, list[str]] = {}
+    for s in parts["scenarios"]:
+        for c in s.get("constraints") or []:
+            named_by.setdefault(c, []).append("" if s.get("row") is None else str(s["row"]))
+    table_or_note(
+        doc, ["Code", "Constraint", "Scenario rows"],
+        [[c["code"], one_line(c.get("text")) or "(referenced only)", ", ".join(named_by.get(c["code"], []))]
+         for c in parts["constraints"]],
+        "Safety constraints", "No constraints recorded.",
+    )
+
+    doc.h1("Trace")
+    doc.p("Hazards, unsafe control actions, loss scenarios and constraints, with the edges the page states.")
+    add_figure(doc, brain, "stpa_trace", {"analysis": slug}, caption=f"STPA trace: {row['name']}")
+
+    doc.appendix("Citations")
+    cites = []
+    labels = (("hazards", "Hazard"), ("ucas", "UCA"), ("scenarios", "Scenario"), ("constraints", "Constraint"))
+    for key, label in labels:
+        for item in parts[key]:
+            cites.append([label, object_key(item), one_line(item.get("cite"))])
+    table_or_note(doc, ["Object", "Code", "Citation"], cites, "Where every object was read", "No objects to cite.")
+
+    comments = bundle_comments(row.get("source_bundle"), row.get("source_page_id"))
+    if comments:
+        doc.appendix("Review comments")
+        doc.p("The page comments the evidence bundle holds (footer and inline), the inline ones with the text "
+              "they are anchored on; a reply follows its comment. No author is named here.")
+        rows = []
+        for c in comments:
+            rows.append([one_line(c.get("kind")), one_line((c.get("created") or "")[:10]),
+                         one_line(c.get("resolution")), one_line(c.get("selection")), one_line(c.get("body"))])
+            for reply in c.get("replies") or []:
+                rows.append(["reply", one_line((reply.get("created") or "")[:10]), "", "", one_line(reply.get("body"))])
+        doc.table(["Kind", "Date", "State", "Anchored on", "Comment"], rows, "Review comments from the bundle")
     return doc

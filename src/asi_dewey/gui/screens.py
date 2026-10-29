@@ -134,17 +134,22 @@ class ScreenFactory:
 # safety_plan_row: the Safety Plan is Kletz's since the 2026-10-27 split.
 # control_structure and its parts: their screen is phase 3 of docs/control-structure-plan.md (0.10.0);
 # until then the `cs` verbs and the generic verbs reach them.
+# stpa_analysis and its parts: one screen for the six, STPA analyses (gui/stpa_screen.py), where the
+# parts are the tabs of the selected analysis; the `stpa` verbs and the generic verbs reach them too.
+STPA_SCREEN = "stpa"  # the screen's key: `/screen {"show": "stpa"}`
 HIDDEN_ENTITY_SCREENS: frozenset[str] = frozenset({
     "jira_ticket", "safety_plan_row",
     "control_structure", "cs_controller", "cs_algorithm", "cs_process_model_entry", "cs_edge", "cs_signal", "cs_note",
+    "stpa_analysis", "stpa_loss", "stpa_hazard", "stpa_uca", "stpa_scenario", "stpa_constraint",
 })
 
 
 def build_default_screens(brain: Brain, hidden: frozenset[str] = HIDDEN_ENTITY_SCREENS) -> ScreenFactory:
-    """Dashboard, one entity screen per entity not in ``hidden``, Export / Import, Generate."""
+    """Dashboard, one entity screen per entity not in ``hidden``, STPA analyses, Export / Import, Generate."""
     from .dashboard import DashboardScreen
     from .entity_screen import EntityScreen
     from .generate_screen import GenerateScreen
+    from .stpa_screen import StpaScreen
     from .transfer_screen import TransferScreen
 
     unknown = hidden - set(brain.registry.names())
@@ -159,6 +164,7 @@ def build_default_screens(brain: Brain, hidden: frozenset[str] = HIDDEN_ENTITY_S
             f"entity:{schema.name}", schema.sheet,
             lambda master, window, s=schema: EntityScreen(master, window, s),
         )
+    factory.register(STPA_SCREEN, "STPA analyses", StpaScreen)
     factory.register("transfer", "Export / Import", TransferScreen)
     factory.register("generate", "Generate", GenerateScreen)
     return factory

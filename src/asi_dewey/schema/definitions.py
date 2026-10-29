@@ -48,6 +48,13 @@ CS_EDGE_KINDS = ("control_action", "feedback")
 default_lookups.register("cs_status", CS_STATUSES)
 default_lookups.register("cs_controller_kind", CS_CONTROLLER_KINDS)
 default_lookups.register("cs_edge_kind", CS_EDGE_KINDS)
+# STPA analyses (asi_hopper/docs/confluence-integration-plan.md, section 7.1): one analysis per Confluence
+# page; the four UCA categories are the four columns of a context table, in the table's order
+STPA_SOURCE_KINDS = ("confluence", "hand")
+STPA_UCA_CATEGORIES = ("not_providing", "providing", "timing_order", "duration")
+default_lookups.register("stpa_status", CS_STATUSES)
+default_lookups.register("stpa_source_kind", STPA_SOURCE_KINDS)
+default_lookups.register("stpa_uca_category", STPA_UCA_CATEGORIES)
 
 # -- simple entities ----------------------------------------------------------
 TASK = register_entity(EntitySchema(
@@ -326,6 +333,145 @@ CS_NOTE = register_entity(EntitySchema(
 CS_ENTITIES = (
     CONTROL_STRUCTURE, CS_CONTROLLER, CS_ALGORITHM, CS_PROCESS_MODEL_ENTRY, CS_EDGE, CS_SIGNAL, CS_NOTE,
 )
+
+# -- STPA analyses: the step objects read from a Confluence page ----------------
+# One analysis holds everything read from one page; every part names its analysis by slug, so the same
+# local code (UCA1, H2, CSTR28) means different things under different analyses and the rows survive
+# any export and import. ``cite`` is the citation the reader builds: ``page <id> v<version> § <heading>
+# (<anchor url>)``, editable, the one thing a report prints beside the object
+# (asi_hopper/docs/confluence-integration-plan.md, section 7.1).
+ANALYSIS = FieldSpec(
+    "analysis", T, "analysis", required=True, help="Slug of the STPA analysis this row belongs to",
+)
+CITE = FieldSpec(
+    "cite", T, "cite",
+    help="The citation: page <id> v<version> § <heading> (<anchor url>); built by the reader, editable",
+)
+NOTE = FieldSpec("note", M, "note", help="A note written here; kept when the page is refreshed")
+
+STPA_ANALYSIS = register_entity(EntitySchema(
+    name="stpa_analysis", table="stpa_analyses", label="STPA Analysis", sheet="STPA analyses",
+    description=(
+        "One STPA analysis: the losses, hazards, unsafe control actions, loss scenarios and constraints of "
+        "one Confluence page (or written by hand), with the page, version and bundle it was read from."
+    ),
+    order_by=("name", "id"),
+    fields=(
+        FieldSpec("name", T, "name", required=True),
+        FieldSpec("slug", T, "slug", help="Stable key the parts point at; unique; from the name when not given"),
+        FieldSpec("system", T, "system", help="The system under analysis"),
+        FieldSpec("status", E, "status", lookup="stpa_status"),
+        FieldSpec("control_structure", T, "control structure",
+                  help="Slug of the control structure the UCAs are linked to, or empty"),
+        FieldSpec("source_kind", E, "source kind", lookup="stpa_source_kind", group="source"),
+        FieldSpec("source_page_id", T, "source page id", group="source", help="The Confluence page id"),
+        FieldSpec("source_url", U, "source url", group="source"),
+        FieldSpec("source_version", I, "source version", group="source", help="The page version read"),
+        FieldSpec("source_body_sha256", T, "source body sha256", group="source",
+                  help="SHA-256 of the Markdown body read, as the bundle records it"),
+        FieldSpec("source_taken_at", T, "source taken at", group="source", help="When the bundle was taken"),
+        FieldSpec("source_bundle", T, "source bundle", group="source", help="The Hopper bundle folder read"),
+        FieldSpec("note", M, "note"),
+    ),
+))
+
+STPA_LOSS = register_entity(EntitySchema(
+    name="stpa_loss", table="stpa_losses", label="STPA Loss", sheet="STPA losses",
+    description="A loss (L1 ...) of an analysis.",
+    order_by=("analysis", "order", "id"),
+    fields=(
+        ANALYSIS,
+        FieldSpec("order", I, "order"),
+        FieldSpec("code", T, "code", required=True, help="L1, L2 ...; unique within the analysis"),
+        FieldSpec("text", M, "text"),
+        CITE,
+        NOTE,
+    ),
+))
+
+STPA_HAZARD = register_entity(EntitySchema(
+    name="stpa_hazard", table="stpa_hazards", label="STPA Hazard", sheet="STPA hazards",
+    description="A hazard (H2, H4.3 ...) of an analysis; a dotted code refines the code before its last dot.",
+    order_by=("analysis", "order", "id"),
+    fields=(
+        ANALYSIS,
+        FieldSpec("order", I, "order"),
+        FieldSpec("code", T, "code", required=True, help="H1, H4.3 ...; unique within the analysis"),
+        FieldSpec("text", M, "text"),
+        FieldSpec("parent", T, "parent", help="The hazard this one refines (H4 for H4.3), or empty"),
+        FieldSpec("losses", J, "losses", help="Loss codes, one per line"),
+        FieldSpec("retired", B, "retired", help="Struck through on the page"),
+        CITE,
+        NOTE,
+    ),
+))
+
+STPA_UCA = register_entity(EntitySchema(
+    name="stpa_uca", table="stpa_ucas", label="STPA UCA", sheet="STPA UCAs",
+    description=(
+        "An unsafe control action (UCA14 ...): a controller, a control action, one of the four categories, "
+        "the hazards it leads to, and the controller and signal of a control structure when linked."
+    ),
+    order_by=("analysis", "order", "id"),
+    fields=(
+        ANALYSIS,
+        FieldSpec("order", I, "order"),
+        FieldSpec("code", T, "code", required=True, help="UCA1 ...; unique within the analysis"),
+        FieldSpec("controller", T, "controller", help="The controller as the page names it"),
+        FieldSpec("control_action", T, "control action", help="The control action as the page names it"),
+        FieldSpec("category", E, "category", lookup="stpa_uca_category"),
+        FieldSpec("text", M, "text"),
+        FieldSpec("hazards", J, "hazards", help="Hazard codes, one per line"),
+        FieldSpec("retired", B, "retired", help="Struck through on the page"),
+        FieldSpec("duplicate_of", T, "duplicate of", help="The UCA this one duplicates, or empty"),
+        FieldSpec("cs_controller", T, "cs controller", group="structure",
+                  help="Key of the linked control structure's controller, or empty"),
+        FieldSpec("cs_signal", T, "cs signal", group="structure",
+                  help="Signal id of the linked control structure (CA-07), or empty"),
+        CITE,
+        NOTE,
+    ),
+))
+
+STPA_SCENARIO = register_entity(EntitySchema(
+    name="stpa_scenario", table="stpa_scenarios", label="STPA Scenario", sheet="STPA scenarios",
+    description=(
+        "One row of a loss-scenario table: the UCA (or its safe counterpart CAn), the scenario types, the causal "
+        "factors, the beliefs and the constraints it leads to."
+    ),
+    order_by=("analysis", "order", "id"),
+    fields=(
+        ANALYSIS,
+        FieldSpec("order", I, "order"),
+        FieldSpec("row", I, "row", help="The table's row number"),
+        FieldSpec("uca", T, "uca", help="The UCA code the row belongs to; empty with a warning when the cell is"),
+        FieldSpec("counterpart", T, "counterpart", help="CA14 when the row is the safe counterpart, else empty"),
+        FieldSpec("types", J, "types", help="Scenario types 1 to 4, one per line"),
+        FieldSpec("causal_factors", M, "causal factors"),
+        FieldSpec("beliefs", M, "beliefs"),
+        FieldSpec("constraints", J, "constraints", help="CSTR codes, one per line"),
+        FieldSpec("retired", B, "retired", help="Struck through on the page"),
+        CITE,
+        NOTE,
+    ),
+))
+
+STPA_CONSTRAINT = register_entity(EntitySchema(
+    name="stpa_constraint", table="stpa_constraints", label="STPA Constraint", sheet="STPA constraints",
+    description="A safety constraint (CSTR28 ...); the text is empty when the page only references it.",
+    order_by=("analysis", "order", "id"),
+    fields=(
+        ANALYSIS,
+        FieldSpec("order", I, "order"),
+        FieldSpec("code", T, "code", required=True, help="CSTR1 ...; unique within the analysis"),
+        FieldSpec("text", M, "text", help="From the first row that spells it out; empty when only referenced"),
+        CITE,
+        NOTE,
+    ),
+))
+
+STPA_ENTITIES = (STPA_ANALYSIS, STPA_LOSS, STPA_HAZARD, STPA_UCA, STPA_SCENARIO, STPA_CONSTRAINT)
 ALL_ENTITIES = (
     TASK, FACT, MACHINE_FUNCTION, USE_CASE, LINK, JIRA_TICKET, QMS_DOCUMENT, PERSON, SAFETY_PLAN_ROW, *CS_ENTITIES,
+    *STPA_ENTITIES,
 )

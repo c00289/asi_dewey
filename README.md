@@ -3,12 +3,39 @@
 One of the [ASI FuSa tools](https://github.com/c00289/c00289/blob/main/README.md) by Roy Mendoza; the master README there lists every sibling.
 
 A functional-safety (FuSa) working-knowledge API for the Wheel Loader programme, with a
-command line and a tkinter desktop window on top. Version **0.9.0**, alpha. Named after
+command line and a tkinter desktop window on top. Version **0.10.0**, alpha. Named after
 Melvil Dewey: one classification scheme, many views.
 
 The idea, in one sentence: a database is the single source of truth, the Excel workbook
 is a generated *view* of it, and everything a human can do through a front end an AI agent
 can do through the same commands.
+
+## What is in 0.10.0
+
+- **The STPA step objects, read from a Confluence page**, Phase D of
+  asi_hopper/docs/confluence-integration-plan.md: six entities (schema version 4, a 0.9.x
+  database opens with the six tables added and nothing else changed): `stpa_analysis` (one per
+  page: name, slug, system, status, the control structure it links to, `source_*` from the Hopper
+  bundle it was read from) and its parts `stpa_loss`, `stpa_hazard`, `stpa_uca`, `stpa_scenario`,
+  `stpa_constraint`, every one with a `cite` (`page <id> v<version> § <heading> (<anchor url>)`)
+  and a `note` of its own. A reader over asi_hopper 0.1.9's page anatomy turns the Markdown of an
+  STPA page into them (`stpa/confluence_reader.py`: hazards and losses by line, UCAs from the
+  context table with their category, hazards, retirement and `duplicate_of`, scenarios and
+  constraints from the loss-scenario table); a factory with four builders (`blank`,
+  `from_bundle` from a Hopper evidence bundle, offline and hashed, the primary one;
+  `from_confluence`, a snapshot through asi_hopper into the evidence folder and then the bundle;
+  `clone`); the `stpa` verbs: `list`, `get`, `builders`, `new`, `refresh [--apply]` (the page read
+  again and compared by code: new, changed, retired; applied with every Dewey-side field kept),
+  `validate`, `link --structure <slug> [--apply]` (`cs_controller` and `cs_signal` by name),
+  `export --out <dir> [--format xlsx|md|docx|pdf|svg|png]`, `delete [--cascade]`; the
+  `stpa_report` document and the `stpa_trace` diagram in the catalogs; an **STPA analyses** screen
+  (the analyses, the parts as tabs, New from…, Validate, Link structure…, Export…, Delete, and
+  **Refresh from Confluence** off the Tk thread, the report shown before it is applied). See
+  [STPA analyses](#stpa-analyses). Confluence stays the truth for the text; Dewey owns the links
+  and the notes; nothing writes to Confluence.
+- `evidence_dir` in `dewey.toml` (`$ASI_DEWEY_EVIDENCE`; default `evidence/` beside the database):
+  where the Confluence bundles go. `status` reports it.
+- `uv.lock` takes asi_dewey 0.10.0; asi_hopper stays 0.1.9.
 
 ## What is in 0.9.0
 
@@ -244,7 +271,9 @@ every path is the explicit argument (`--db`, `--out`), then the environment (`AS
 and `out/` next to the database. `status` reports all three as `database`, `workbook_path`
 and `out_dir`. A fourth path, `control_structures_dir` (default `../asi_standards/control-structures`,
 `$ASI_DEWEY_CONTROL_STRUCTURES` overrides it), is the private shelf the `template:wheel_loader_master`
-builder reads; see [Control structures](#control-structures). Two more keys are plain settings, not
+builder reads; see [Control structures](#control-structures). A fifth, `evidence_dir` (default `evidence/`
+next to the database, `$ASI_DEWEY_EVIDENCE` overrides it), is where `stpa new from_confluence` and
+`stpa refresh` write their Hopper bundles; see [STPA analyses](#stpa-analyses). Two more keys are plain settings, not
 paths: `jira_jql` (what `jira sync` caches) and `jira_live_jql` (what `jira live` fetches); see
 [Jira](#jira) and `dewey.example.toml`. `jira_live_autofetch` (0.7.3 to 0.8.0) is ignored since 0.8.1, with any
 other unknown key.
@@ -690,6 +719,113 @@ template builder reads it. This repository holds none of it: the tests build a s
 eight-box structure with invented names, and one local-only test on the private datasets asserts
 counts and files, never text, and is skipped where the shelf is absent.
 
+## STPA analyses
+
+The STPA pages on Confluence carry the later steps: the losses and hazards, the unsafe control
+actions in a context table, the loss scenarios and the safety constraints, each with a stable local
+code (`H2`, `UCA14`, `CSTR28`) that means something only within its page. Since 0.10.0 Dewey holds
+them as rows (asi_hopper/docs/confluence-integration-plan.md, Phase D), reads them from a page
+through [asi_hopper](../asi_hopper) 0.1.9's page anatomy, cites the page, version and section every
+object came from, and links the UCAs to a control structure. Confluence is read only, and stays the
+truth for the text; Dewey owns the links and the notes.
+
+**Entities** (schema version 4). One `stpa_analysis` (name, slug, system, status Draft / Reviewed /
+Baselined, `control_structure`, `source_kind` confluence / hand, `source_page_id`, `source_url`,
+`source_version`, `source_body_sha256`, `source_taken_at`, `source_bundle`, note) holds everything
+read from one page; every part names its analysis by slug, carries its `cite` and a `note`:
+
+| Entity | Sheet | Fields beyond `analysis`, `order`, `cite` and `note` |
+|---|---|---|
+| `stpa_loss` | STPA losses | code (`L1`), text |
+| `stpa_hazard` | STPA hazards | code (`H2`, `H4.3`), text, parent (the code before the last dot when listed), losses (list), retired |
+| `stpa_uca` | STPA UCAs | code (`UCA14`), controller, control_action, category (not_providing, providing, timing_order, duration), text, hazards (list), retired, duplicate_of, cs_controller, cs_signal |
+| `stpa_scenario` | STPA scenarios | row, uca, counterpart (`CA14`), types (1 to 4), causal_factors, beliefs, constraints (list), retired |
+| `stpa_constraint` | STPA constraints | code (`CSTR28`), text (empty when only referenced) |
+
+The rules hold on every verb that writes a row (`services/stpa_service.py`): a part names an
+analysis that exists; a code is unique within its analysis and immutable while other rows point at
+it; a hazard a UCA lists, a loss a hazard lists, a constraint or the UCA a scenario names must exist
+in the analysis as a **warning**, never a refusal (the pages cite `[H4]` where only `H4.3` to `H4.5`
+are listed, and a scenario row can have an empty UCA cell); a scenario type is 1 to 4; one analysis
+per (page id, version); the `source_*` of an analysis read from Confluence move only through
+`refresh`; an analysis with parts is deleted with `--cascade` or not at all. Every change publishes
+`stpa.changed`; a load and a refresh publish one.
+
+**The reader** (`stpa/confluence_reader.py`) is pure: it takes the Markdown body and the citation
+context and never sees raw Atlassian JSON. Losses and hazards are the `L1 - text` and `H2 - text`
+lines of the section whose heading contains "Losses and Hazards" (struck means retired); UCAs are
+the cells of the first table under "Context Table" (column 0 the controller, carried down when
+empty; column 1 the control action; columns 2 to 5 the four categories), each cell cut at its bold
+runs, the hazards read from `[H1, H2.1]`, a code inside `~~` retired, `(duplicate of **UCA7**)`
+the previous UCA's twin, a cell that is a link to another page a warning naming it; scenarios and
+constraints are the rows of the first table under "Loss Scenarios" (the UCA or its counterpart
+`CAn` at the start of the cell, the types from `Type (n)`, the `Belief:` runs, every `CSTRn` of the
+constraints cell with the text that follows it, the first row that spells a constraint out winning).
+The reader answers the dataset and its warnings; the factory loads it through the services.
+
+**The factory** (`asi_dewey.stpa.stpa_factory.StpaFactory`, `brain.stpa_factory`):
+
+| Builder | Reads | Options |
+|---|---|---|
+| `blank` | nothing | `--name`, `--system` |
+| `from_bundle` | a Hopper Confluence evidence bundle (`manifest.json`, `pages/<id>.md`); offline, hashed, replayable: **the primary builder** | `--from <folder>`, `--page <id>` when the bundle holds several, `--name` |
+| `from_confluence` | a snapshot of the page with its comments through `hopper.evidence.snapshot_pages` into `evidence_dir`, then `from_bundle`; needs an Atlassian session (`asi-hopper auth login`) | `--page <id>`, `--out <folder>`, `--name` |
+| `clone` | an existing analysis | `--from <id-or-slug>`, `--name` |
+
+**Verbs**:
+
+```powershell
+asi-dewey stpa list                                             # every analysis with its counts
+asi-dewey stpa builders
+asi-dewey stpa new from_bundle --from evidence/<bundle folder> --name "Locator"   # the acceptance form
+asi-dewey stpa new from_confluence --page 399343803 --name "Locator"             # snapshot, then read
+asi-dewey stpa get locator                                      # the analysis and every part (id, uid or slug)
+asi-dewey stpa refresh locator                                  # the report: new / changed / retired by code
+asi-dewey stpa refresh locator --apply                          # applied; notes, cs_controller, cs_signal, status kept
+asi-dewey stpa refresh locator --from <newer bundle> --apply    # against a bundle instead of a new snapshot
+asi-dewey stpa validate locator
+asi-dewey stpa link locator --structure wheel_loader            # cs_controller / cs_signal proposed by name
+asi-dewey stpa link locator --structure wheel_loader --apply    # the exact matches written
+asi-dewey stpa export locator --out exports                     # <out>/locator.xlsx, locator_report.md, locator_trace.png
+asi-dewey stpa export locator --out exports --all               # xlsx, md, docx, pdf, svg, png
+asi-dewey stpa delete locator --cascade
+asi-dewey update stpa_uca 14 --set cs_signal=CA-07 --set note="see the review of 10-29"
+```
+
+`refresh` reads the page again (a new snapshot through Hopper into `evidence_dir`, or the bundle
+`--from` names) and compares it to the stored objects by code (a scenario by its row): `new`,
+`changed` (the page fields that differ, before and after), `retired` (gone from the page, or now
+struck) and `removed` (a loss or a constraint gone). Without `--apply` it is a report and writes
+nothing; with it the page fields are written, every object's `cite` moves to the new version, the
+analysis's `source_*` move with it, and every Dewey-side field (`note`, `cs_controller`,
+`cs_signal`, `status`) is kept; one audit entry per object changed plus `stpa.refresh` with the
+counts. `validate` reports dangling codes, UCAs without a scenario, constraints only referenced,
+UCAs with the same text, a scenario without a UCA, and, when a structure is linked, UCAs naming a
+controller the structure does not have. `link --structure` matches a UCA's controller text to the
+structure's controller names and keys and its control action to the names of the signals leaving
+that controller, case-insensitively; exact matches are written with `--apply`, partial ones are
+reported with their candidates and never written.
+
+**Views.** The six sheets are in the workbook with every other entity; `stpa export` writes a
+workbook of one analysis. The `stpa_report` document (Gutenberg, `--param analysis=<slug>`): the
+source, the losses, the hazards, the UCAs by controller and category, the scenarios, the
+constraints with the rows that name them, the trace diagram, every object with its citation, and
+the page's review comments as an appendix when the analysis came from a bundle (no author is named).
+The `stpa_trace` diagram (Escher): hazards, UCAs, scenarios and constraints as four columns with the
+edges the page states, a retired UCA tinted, a duplicate a dashed edge; a swimlane per controller
+of the linked structure once the UCAs are linked, with lanes for the hazards and the constraints.
+
+**The screen.** *STPA analyses* in the navigation: the analyses with their counts, the parts of the
+selected one as tabs (read-only tables; the generic verbs edit them), New from… (the builders),
+Validate, Link structure…, Export…, Delete, and **Refresh from Confluence**, which runs the report
+on a worker thread (Confluence is seconds away), shows it in the Report tab and asks before
+`--apply` runs on the Tk thread.
+
+**Nothing real in the repository.** The tests read a synthetic STPA page with neutral names
+(`tests/fixtures/conveyor-gate-stpa.md`, the exact Markdown shape the server renders) and a
+synthetic bundle built around it; asi_hopper's own Confluence fixtures are synthetic too. The one
+run against the real page happens on the owner's machine and is recorded in the CHANGELOG as counts.
+
 ## Layout
 
 ```
@@ -699,23 +835,26 @@ src/asi_dewey/
   brain.py            Brain: wires everything, the in-process API, dewey.toml loading
   locks.py            the family lock: one primary tool at a time, $ASI_PRIMARY_LOCK_DIR
   prefs.py            per-person preferences (the latched theme) in prefs.json, $ASI_DEWEY_PREFS
-  schema/             FieldSpec, EntitySchema, lookups, registry, definitions (the 16 entities)
+  schema/             FieldSpec, EntitySchema, lookups, registry, definitions (the 22 entities)
   models/             ModelFactory (dataclasses from schemas)
   storage/            Storage interface, SQLite backend, migrations, audit log, StorageFactory
   repositories/       SqlRepository, RepositoryFactory
   services/           EntityService (validated CRUD), TransferService (dump/load/export/import), shared queries,
-                      control_structure_service.py (the rules of the seven entities, the structure-level operations)
-  stpa/               ControlStructureFactory (builders, to_diagram, export through asi_escher), drawio_reader.py
+                      control_structure_service.py (the rules of the seven entities, the structure-level operations),
+                      stpa_service.py (the rules of the six STPA entities; refresh, validate, link)
+  stpa/               ControlStructureFactory (builders, to_diagram, export through asi_escher), drawio_reader.py,
+                      StpaFactory (stpa_factory.py: the builders and the export) and confluence_reader.py
   commands/           Result, Command, CommandFactory, Dispatcher, built-in verbs
   io/                 JSON and Excel exporters and importers behind factories
   generate/           DiagramFactory, DocumentFactory, Spec/Param, the diagram and document catalogs, figures.py
   automation/         CLI (with forwarding), EventBus (seq), script runner, server.py (the loopback automation
                       server a window owns) and session.py (the session file the CLI reads to find it)
   gui/                tkinter: MainWindow, ScreenFactory, WidgetFactory, entity/dashboard/transfer/generate screens,
-                      theme.py (ThemeFactory, GridTheme) and palettes.py (the family palette, pure data)
+                      stpa_screen.py, theme.py (ThemeFactory, GridTheme) and palettes.py (the family palette)
 tests/                pytest suite (schema, core, transfer, generate, jira, locks, CLI, GUI, theme, server, session,
-                      control structures); fixtures/dewey-0.7.4.db and dewey-0.8.4.db, small databases of those
-                      versions for the migration tests
+                      control structures, STPA); fixtures/dewey-0.7.4.db, dewey-0.8.4.db and dewey-0.9.0.db, small
+                      databases of those versions for the migration tests; fixtures/conveyor-gate-stpa.md, the
+                      synthetic STPA page
 ```
 
 ## Tests
@@ -738,12 +877,17 @@ make their requests from a helper thread while pumping `window.update()`.
 
 The files, one per layer: `test_schema.py`, `test_core.py`, `test_transfer.py`, `test_generate.py`,
 `test_jira.py` (asi_hopper's replay fixtures; skipped when the sibling is not checked out),
-`test_locks.py`, `test_cli.py`, `test_gui.py`, `test_theme.py`, `test_server.py`, `test_session.py`
-and `test_control_structures.py`; `conftest.py` holds the isolation fixture and the `brain`, `seeded`
-and `hold` fixtures. `test_core.py` opens a copy of `tests/fixtures/dewey-0.7.4.db` (never the file
-itself) to check that a 0.7.x database opens as 0.8.0 with every row stamped and nothing else
-changed; `test_control_structures.py` does the same with `dewey-0.8.4.db` for the seven tables of
-0.9.0. The control-structure tests run escher's OCR gate monkeypatched to "competent", so they pass
+`test_locks.py`, `test_cli.py`, `test_gui.py`, `test_theme.py`, `test_server.py`, `test_session.py`,
+`test_control_structures.py` and `test_stpa.py`; `conftest.py` holds the isolation fixture and the
+`brain`, `seeded` and `hold` fixtures. `test_core.py` opens a copy of `tests/fixtures/dewey-0.7.4.db`
+(never the file itself) to check that a 0.7.x database opens as 0.8.0 with every row stamped and
+nothing else changed; `test_control_structures.py` does the same with `dewey-0.8.4.db` for the seven
+tables of 0.9.0, and `test_stpa.py` with `dewey-0.9.0.db` for the six tables of 0.10.0. The STPA
+tests read a synthetic page (`tests/fixtures/conveyor-gate-stpa.md`) through a synthetic Hopper
+bundle written in a temporary folder; one test runs `from_confluence` on asi_hopper's replay
+fixtures (skipped when the sibling is not checked out); the screen test runs the refresh on its
+worker thread while pumping `window.update()`. `$ASI_DEWEY_EVIDENCE` is unset for every test, so
+bundles go beside the per-test database. The control-structure tests run escher's OCR gate monkeypatched to "competent", so they pass
 on CI without the engine; one test runs the real engine on the synthetic structure and is skipped
 where the engine is absent; one local-only test loads the private datasets when they are beside the
 repo and asserts counts and files, never text. `$ASI_DEWEY_CONTROL_STRUCTURES` is pointed at an

@@ -15,6 +15,7 @@ CS_TABLES = [
     "control_structures", "cs_controllers", "cs_algorithms", "cs_process_model_entries", "cs_edges", "cs_signals",
     "cs_notes",
 ]
+STPA_TABLES = ["stpa_analyses", "stpa_losses", "stpa_hazards", "stpa_ucas", "stpa_scenarios", "stpa_constraints"]
 
 
 def test_crud_round_trip(brain):
@@ -78,7 +79,7 @@ def test_schema_and_status_commands(seeded):
     assert status["app_version"] == __version__
     assert status["entities"]["fact"] == 2 and "create" in status["commands"]
     full = seeded.execute("schema").data
-    assert len(full["entities"]) == 16 and "task_class" in full["lookups"] and full["commands"]
+    assert len(full["entities"]) == 22 and "task_class" in full["lookups"] and full["commands"]
     one = seeded.execute("schema", entity="jira").data
     assert one["name"] == "jira_ticket" and one["lookups"]["jira_status"]
 
@@ -209,10 +210,10 @@ def test_a_0_7_4_database_opens_as_0_8_0_with_every_row_identified(tmp_path):
     assert len(before["facts"]) == 2 and len(before["links"]) == 1 and len(before["qms_documents"]) == 1
     assert "uid" not in _columns(db, "facts") and len(before) == 9
     with Brain(db) as b:
-        # 0.9.0 adds the seven control-structure tables (empty) beside the nine it alters
-        assert b.migration["created"] == CS_TABLES
+        # 0.9.0 adds the seven control-structure tables and 0.10.0 the six STPA tables (empty) beside the nine it alters
+        assert b.migration["created"] == CS_TABLES + STPA_TABLES
         assert b.migration["uids_stamped"] == {"fact": 2, "link": 1, "qms_document": 1}
-        assert set(b.migration["altered"]) == {s.table for s in b.registry} - set(CS_TABLES)
+        assert set(b.migration["altered"]) == {s.table for s in b.registry} - set(CS_TABLES) - set(STPA_TABLES)
         assert all(cols == ["uid"] for cols in b.migration["altered"].values())
         uids: dict[tuple[str, int], str] = {}
         for schema in b.registry:
@@ -232,7 +233,8 @@ def test_a_0_7_4_database_opens_as_0_8_0_with_every_row_identified(tmp_path):
         assert [m["app_version"] for m in migrations] == ["0.7.4", __version__]  # the fingerprint changed
     after = _rows_without_uid(db)
     assert {k: v for k, v in after.items() if k in before} == before  # nothing else changed, timestamps alike
-    assert {k for k, v in after.items() if k not in before} == set(CS_TABLES) and not any(after[k] for k in CS_TABLES)
+    new_tables = CS_TABLES + STPA_TABLES
+    assert {k for k, v in after.items() if k not in before} == set(new_tables) and not any(after[k] for k in new_tables)
     # a second open stamps nothing and audits nothing
     with Brain(db) as b:
         assert b.migration["uids_stamped"] == {} and b.migration["altered"] == {}

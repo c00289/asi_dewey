@@ -8,12 +8,14 @@ from typing import Any
 
 from ..services.control_structure_service import PART_ENTITIES
 from ..services.queries import DUE_WINDOW_DAYS, open_jira_tickets, recent_changes, tasks_due
+from ..services.stpa_service import PART_ENTITIES as STPA_PART_ENTITIES
 from .screens import Screen, fit_columns
 from .theme import GridBanner
 
-# the parts of a control structure have no tile of their own: the structure's tile counts the
-# structures, the parts are counted under it by the Control structures screen (phase 3)
-UNTILED: frozenset[str] = frozenset(PART_ENTITIES)
+# the parts of a control structure or of an STPA analysis have no tile of their own: the structure's
+# (the analysis's) tile counts the structures (the analyses), the parts are counted under it by the
+# Control structures (phase 3) and STPA analyses screens
+UNTILED: frozenset[str] = frozenset(PART_ENTITIES) | frozenset(STPA_PART_ENTITIES)
 
 
 class DashboardScreen(Screen):

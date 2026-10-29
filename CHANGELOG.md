@@ -11,6 +11,114 @@ All notable changes to ASI Dewey are recorded here. The format follows
 - Excel import diff preview; `fill` / `submit` / `cancel` puppeting of a screen's form; a
   `View > Automation` submenu or screen; date picker widget.
 
+## [0.10.0] - 2026-10-29
+
+The STPA step objects, Phase D of
+[asi_hopper/docs/confluence-integration-plan.md](../asi_hopper/docs/confluence-integration-plan.md)
+(section 7). The owner, 2026-10-29: "there may be a way to tie in individual stpa objects to confluence".
+The STPA pages carry losses, hazards, unsafe control actions, loss scenarios and constraints with stable
+local codes; Dewey now holds them as entities, each one citing the page, the version and the section it
+came from, read through asi_hopper 0.1.9's page anatomy (Phase C) from a Hopper evidence bundle, and
+links the UCAs to the control structures of 0.9.0. Confluence stays read only and the truth for the text;
+Dewey owns the links and the notes. Schema version 3 to 4. The plan foresaw this as 0.9.0; that number
+went to the control structures the same day, and the control-structure screen (phase 3 of
+docs/control-structure-plan.md) shares 0.10.0 with it.
+
+### Added
+- **Six entities** (`schema/definitions.py`): `stpa_analysis` (name, slug, system, status Draft / Reviewed /
+  Baselined, `control_structure`, `source_kind` confluence / hand, `source_page_id`, `source_url`,
+  `source_version`, `source_body_sha256`, `source_taken_at`, `source_bundle`, note) and its parts
+  `stpa_loss` (code, text), `stpa_hazard` (code, text, parent, losses, retired), `stpa_uca` (code,
+  controller, control_action, category, text, hazards, retired, duplicate_of, cs_controller, cs_signal),
+  `stpa_scenario` (row, uca, counterpart, types, causal_factors, beliefs, constraints, retired) and
+  `stpa_constraint` (code, text), every part with `cite` (`page <id> v<version> § <heading> (<anchor
+  url>)`) and `note`, every row with its hidden `uid`; lists as JSON arrays in text columns. Lookups
+  `stpa_status`, `stpa_source_kind`, `stpa_uca_category`. One sheet each (`STPA analyses` ... `STPA
+  constraints`); the JSON dump carries them.
+- **The service rules** (`services/stpa_service.py`, one `EntityService` subclass per entity, registered
+  beside the control-structure rules): a part names an analysis that exists; a code is unique within the
+  analysis and immutable while rows point at it; a hazard listed on a UCA, a loss on a hazard, a
+  constraint or the UCA of a scenario must exist, as a warning, never a refusal (the pages cite `[H4]`
+  where only H4.3 to H4.5 are listed); a dotted hazard's parent is the code before its last dot when that
+  hazard exists; a scenario type is 1 to 4; one analysis per (page id, version); the `source_*` of an
+  analysis read from Confluence move only through `refresh`; an analysis with parts is deleted with
+  `cascade` or refused. `StpaService` (`brain.stpa`): `resolve`, `parts`, `dataset`,
+  `create_from_dataset` (one transaction, audited once as `stpa.new`, forward references known to the
+  load), `duplicate`, `delete`, `validate` (dangling codes, UCAs without a scenario, constraints only
+  referenced, duplicate texts, a scenario without a UCA, UCAs naming a controller the linked structure
+  lacks), `compare` (the refresh report by code: new, changed, retired, removed), `apply_refresh` (page
+  fields written, every cite moved to the new version, the analysis's `source_*` moved, every
+  Dewey-side field kept, one audit entry per object plus `stpa.refresh`), `link_structure` (controller
+  text to `cs_controller.name` or `key`, control action to the names of the signals leaving it; exact
+  matches apply, partial ones are reported). Events `stpa.changed`, `stpa.exported`.
+- **The reader** (`stpa/confluence_reader.py`): pure functions over asi_hopper's `sections`, `tables`,
+  `strike`, `split_on_bold` and `links`; the Markdown body plus the citation context in, the dataset out,
+  never raw Atlassian JSON. Hazards and losses by line (a struck line retired, a dotted code's parent);
+  UCAs from the first context table (the controller carried down, the four categories by column, each
+  cell cut at its bold runs, hazards from the escaped `[H1, H2.1]`, a code inside `~~` retired,
+  `(duplicate of **UCA7**)` read as the previous UCA's twin, an unbolded `UCA8 text` cell read by its
+  code, a cell that links to another page a warning naming it, a hazard the page does not list a
+  warning); scenarios and constraints from the first loss-scenario table (the UCA or its counterpart
+  `CAn` at the start of the cell, `Type (n)`, the `Belief:` runs, every `CSTRn` of the constraints cell
+  with its text, `and`-joined references, the first row that spells a constraint out winning, an empty
+  UCA cell kept with a warning).
+- **The factory** (`stpa/stpa_factory.py`, `brain.stpa_factory`): `StpaFactory` with the control-structure
+  factory's `Builder` shape and its own registry: `blank`, `from_bundle` (the primary builder: a Hopper
+  Confluence bundle's `manifest.json`, `pages.json` and `pages/<id>.md`, the page picked with `--page`
+  when the bundle holds several, the `source_*` from the manifest, the comments kept for the report),
+  `from_confluence` (`hopper.evidence.snapshot_pages` of the page with its comments into `evidence_dir`,
+  then `from_bundle`; a missing session or a failed read is one line, never a browser), `clone`;
+  `register_stpa_builder` adds one. `reread` for the refresh (a bundle `--from`, else a new snapshot).
+  `export` writes `<out>/<slug>.xlsx` (the six sheets of one analysis), `<slug>_report.md|docx|pdf`
+  (the `stpa_report` document) and `<slug>_trace.svg|png` (the `stpa_trace` diagram); default `xlsx`,
+  `md`, `png`; audited as `stpa.export`, published as `stpa.exported`.
+- **The `stpa` verb** (`commands/stpa.py`): `list | get <id> | builders | new <builder> [--name --slug
+  --system --from --page --out] | refresh <id> [--from <bundle>] [--apply] | validate <id> | link <id>
+  --structure <slug> [--apply] | export <id> [--out <dir>] [--format xlsx|md|docx|pdf|svg|png]... [--all]
+  | delete <id> [--cascade]`; an analysis by id, uid or slug; every answer a JSON `Result`, the reader's
+  warnings first.
+- **Views**: the `stpa_report` document (the source, losses, hazards, the UCAs by controller and
+  category, the scenarios, the constraints with the rows that name them, the trace figure, every object
+  with its citation, the bundle's review comments as an appendix without authors) and the `stpa_trace`
+  diagram (hazards, UCAs, scenarios, constraints as four columns left to right with the edges the page
+  states, a retired UCA in the state tint, a duplicate a dashed edge; once linked to a structure, a
+  swimlane per controller with lanes for the hazards and the constraints), both with `--param
+  analysis=<slug>`.
+- **The screen** (`gui/stpa_screen.py`, *STPA analyses*): the analyses with their counts, the parts of
+  the selected one as tabs (read-only tables, no `id`, `order` or `uid` column), New from… with the
+  builders, Validate, Link structure…, Export…, Delete, and Refresh from Confluence: the report runs
+  on a worker thread polled with `after`, is shown in the Report tab, and `--apply` runs on the Tk
+  thread once confirmed. The six entities are in `HIDDEN_ENTITY_SCREENS`; the Dashboard tiles the
+  analyses and not the five parts.
+- **Configuration**: `evidence_dir` in `dewey.toml` (a path, relative to the file; default `evidence/`
+  beside the database; `$ASI_DEWEY_EVIDENCE` overrides it); `status` reports it as `evidence_dir`.
+- `tests/fixtures/dewey-0.9.0.db`: a small 0.9.0 database for the migration test;
+  `tests/fixtures/conveyor-gate-stpa.md`: the synthetic STPA page.
+
+### Changed
+- **Schema version 4.** A 0.9.x database opens with the six tables created, nothing altered, no row
+  touched; the 0.9.0 fixture test counts them.
+- `uv.lock` takes asi_dewey 0.10.0; asi_hopper stays 0.1.9 (`sections`, `find_section`, `tables`,
+  `strike`, `split_on_bold`, `links`, `PageSource`, `snapshot_pages`, the error classes: what the reader
+  and the factory import; nothing from `asi_hopper.gateway`).
+
+### Tests
+- 222 to 240. `test_stpa.py`: the reader on the synthetic page (2 losses, 5 hazards with a parent and a
+  retired one, 8 UCAs with their categories and hazards, UCA3 retired and the duplicate of UCA6, the link
+  cell and the unknown hazard H9 as warnings, 10 scenario rows with types, beliefs, counterparts and
+  constraints, 6 constraints with the spelled-out text kept, the cite format); `from_bundle`, `blank`,
+  `clone` and the catalog; `from_confluence` on asi_hopper's replay fixtures (5 hazards, 8 UCAs, 12 rows,
+  7 constraints; a refresh of the unchanged page reports nothing); every rule and refusal; cascade delete;
+  `validate`; every `stpa` verb and the command line in the acceptance form; `refresh` against the same
+  bundle (nothing) and a changed one (new hazard, changed text, retired UCA, a constraint no longer
+  spelled out), applied with the note, the links and the status kept and every cite moved; `link
+  --structure` against a small synthetic structure (five exact, three partial, the exact ones written,
+  validate naming the controller the structure lacks); the report and the trace rendering, with and
+  without swimlanes; the export's six sheets, triplet and pictures with the audit and the event;
+  dump/load and the workbook round trip; the 0.9.0 migration; the screen (create, validate, export,
+  refresh off the Tk thread, apply, delete). The existing tests count 22 entities and 22 sheets; the
+  window tests check the entity screens and the two feature screens by name, not by a count.
+
 ## [0.9.0] - 2026-10-29
 
 Control structures, phase 2 of docs/control-structure-plan.md. The owner, 2026-10-29: "introduce a

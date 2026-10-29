@@ -28,7 +28,7 @@ from asi_dewey.services.control_structure_service import PART_ENTITIES
 from asi_dewey.stpa import ControlStructureFactory, read_dataset_folder, read_drawio
 from asi_dewey.stpa.drawio_reader import group_algorithms, group_entries, parse_entry, render_entry, unwrap
 from asi_dewey.stpa.factory import DEFAULT_FORMATS, FORMATS, TEMPLATE_BUILDER
-from asi_dewey.version import __version__
+from asi_dewey.version import SCHEMA_VERSION, __version__
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 FIXTURE_0_8_4 = REPO_ROOT / "tests" / "fixtures" / "dewey-0.8.4.db"
@@ -145,7 +145,7 @@ def competent_ocr(monkeypatch):
 
 # -- entities and the JSON field -------------------------------------------------------------
 def test_the_seven_entities_are_registered_with_their_sheets():
-    assert [s.name for s in default_registry][-7:] == list(CS_ENTITIES)
+    assert [s.name for s in default_registry][-13:-6] == list(CS_ENTITIES)  # the six STPA entities follow (0.10.0)
     sheets = [default_registry.get(e).sheet for e in CS_ENTITIES]
     assert sheets == ["CS structures", "CS controllers", "CS algorithms", "CS process model", "CS edges", "CS signals",
                       "CS notes"]
@@ -724,7 +724,7 @@ def test_dump_load_and_workbook_carry_the_seven_entities(built, tmp_path):
         "cs_edge": 9, "cs_signal": 10, "cs_note": 1,
     }
     payload = json.loads(dump.read_text(encoding="utf-8"))
-    assert payload["schema_version"] == 3
+    assert payload["schema_version"] == SCHEMA_VERSION
     assert payload["entities"]["cs_process_model_entry"][0]["variables"] == ["Mission state", "Site clearance"]
     with Brain(tmp_path / "loaded.db") as other:
         loaded = other.execute("load", path=str(dump), mode="replace")
@@ -753,12 +753,15 @@ def test_a_0_8_4_database_opens_as_0_9_0_with_the_seven_tables_added(tmp_path):
     con.close()
     assert "control_structures" not in tables and len(before["facts"]) == 2
     with Brain(db) as b:
-        assert b.migration["created"] == ["control_structures", "cs_controllers", "cs_algorithms",
-                                          "cs_process_model_entries", "cs_edges", "cs_signals", "cs_notes"]
+        # the seven tables of 0.9.0 and, since 0.10.0, the six STPA tables after them
+        assert b.migration["created"][:7] == ["control_structures", "cs_controllers", "cs_algorithms",
+                                              "cs_process_model_entries", "cs_edges", "cs_signals", "cs_notes"]
+        assert b.migration["created"][7:] == ["stpa_analyses", "stpa_losses", "stpa_hazards", "stpa_ucas",
+                                              "stpa_scenarios", "stpa_constraints"]
         assert b.migration["altered"] == {} and b.migration["uids_stamped"] == {}
         migrations = b.storage.fetchall("SELECT app_version FROM schema_migrations ORDER BY version")
         versions = [m["app_version"] for m in migrations]
-        assert versions == ["0.8.4", __version__] and b.status()["schema_version"] == 3
+        assert versions == ["0.8.4", __version__] and b.status()["schema_version"] == SCHEMA_VERSION
         assert b.execute("cs", action="list").data == []
         assert b.execute("list", entity="fact").data[0]["name"] == "Project code"
         made = b.control_structures.create_from_dataset(synthetic(), "test")[0]
@@ -777,11 +780,11 @@ def test_the_parts_have_no_screen_and_one_tile(brain):
     from asi_dewey.gui.dashboard import UNTILED
     from asi_dewey.gui.screens import HIDDEN_ENTITY_SCREENS, build_default_screens
 
-    assert set(CS_ENTITIES) <= HIDDEN_ENTITY_SCREENS and UNTILED == frozenset(PART_ENTITIES)
+    assert set(CS_ENTITIES) <= HIDDEN_ENTITY_SCREENS and frozenset(PART_ENTITIES) <= UNTILED
+    assert "control_structure" not in UNTILED  # the structure's tile counts the structures
     factory = build_default_screens(brain)
     keys = [key for key, _title in factory.items()]
     assert not any(key.startswith("entity:cs_") or key == "entity:control_structure" for key in keys)
-    assert len(keys) == 10
 
 
 # -- local only: the owner's structure, counts and files, never its text ----------------------

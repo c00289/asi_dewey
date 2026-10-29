@@ -129,7 +129,7 @@ def phase_flow(brain: Brain, params: dict[str, str]) -> Any:
         deliverable = one_line(row.get("deliverable")) or f"deliverable {row['id']}"
         label = deliverable
         if row.get("status"):
-            label += f"\n«{one_line(row['status'])}»"
+            label += f"\nÂ«{one_line(row['status'])}Â»"
         authors = ([one_line(row["author"])] if row.get("author") else []) + set_flags(row, author_flags)
         if authors:
             label += "\n" + short_list(authors)
@@ -190,7 +190,7 @@ def task_flow(brain: Brain, params: dict[str, str]) -> Any:
     previous: str | None = None
     for task in tasks:
         lane = f"lane_{slugify(task.get('task_class') or 'unclassified')}"
-        dates = " → ".join(x for x in (task.get("start"), task.get("end")) if x)
+        dates = " â†’ ".join(x for x in (task.get("start"), task.get("end")) if x)
         label = one_line(task.get("name")) + (f"\n{dates}" if dates else "")
         done = bool(task.get("end")) and dt.date.fromisoformat(task["end"]) < today
         node_id = f"task_{task['id']}"
@@ -199,4 +199,90 @@ def task_flow(brain: Brain, params: dict[str, str]) -> Any:
         if previous:
             d.edge(previous, node_id)
         previous = node_id
+    return d
+
+
+# -- stpa_trace ---------------------------------------------------------------
+TRACE_LABEL_CHARS = 48
+RETIRED_TINT = "state"
+
+
+def short(text: Any, limit: int = TRACE_LABEL_CHARS) -> str:
+    line = one_line(text)
+    return line if len(line) <= limit else line[: limit - 1].rstrip() + "…"
+
+
+@register_diagram(Spec(
+    key="stpa_trace", title="STPA trace",
+    description="Hazards, unsafe control actions, loss scenarios and constraints of one analysis as four columns "
+                "with the edges the page states; a swimlane per controller of the linked control structure when "
+                "the UCAs are linked to one, a retired UCA in the state tint, a duplicate as a dashed edge.",
+    params=(Param("analysis", "The analysis: its id, uid or slug", required=True),),
+))
+def stpa_trace(brain: Brain, params: dict[str, str]) -> Any:
+    from asi_escher import THEME, Diagram
+
+    row = brain.stpa.resolve(params["analysis"])
+    parts = brain.stpa.parts(row["slug"])
+    hazards = {h["code"]: h for h in parts["hazards"]}
+    ucas = {u["code"]: u for u in parts["ucas"]}
+    constraints = {c["code"]: c for c in parts["constraints"]}
+    linked = [u["cs_controller"] for u in parts["ucas"] if u.get("cs_controller")]
+    structure = row.get("control_structure")
+    lanes: dict[str, str] = {}  # lane id -> title, in order; empty: a plain layered graph, left to right
+    if structure and linked:
+        order = {c["key"]: (c.get("order") or 0, c.get("name") or c["key"])
+                 for c in brain.service("cs_controller").list({"structure": structure})}
+        lanes["lane_hazards"] = "Hazards"
+        for key in sorted(dict.fromkeys(linked), key=lambda k: order.get(k, (10**6, k))):
+            lanes[f"lane_{slugify(key)}"] = order.get(key, (0, key))[1]
+        if any(not u.get("cs_controller") for u in parts["ucas"]):
+            lanes["lane_unlinked"] = "Not linked"
+        lanes["lane_constraints"] = "Constraints"
+    d = Diagram(f"STPA trace: {row['name']}", "flowchart", direction="TB" if lanes else "LR")
+    for lane_id, title in lanes.items():
+        d.lane(lane_id, title)
+
+    def lane_of(uca: dict[str, Any] | None) -> str | None:
+        if not lanes:
+            return None
+        if uca is None or not uca.get("cs_controller"):
+            return "lane_unlinked"
+        return f"lane_{slugify(uca['cs_controller'])}"
+
+    retired_fill, retired_stroke = THEME[RETIRED_TINT]
+    for code, h in hazards.items():
+        d.node(f"h_{slugify(code)}", f"{code}\n{short(h.get('text'))}", "io", lane="lane_hazards" if lanes else None)
+    for code, u in ucas.items():
+        label = f"{code}\n{short(u.get('text'))}"
+        if u.get("retired"):
+            label += "\n«retired»"
+        tint = (retired_fill, retired_stroke) if u.get("retired") else (None, None)
+        d.node(f"u_{slugify(code)}", label, "process", lane=lane_of(u), fill=tint[0], stroke=tint[1])
+    for code, c in constraints.items():
+        d.node(f"c_{slugify(code)}", f"{code}\n{short(c.get('text')) or '(referenced only)'}", "document",
+               lane="lane_constraints" if lanes else None)
+    for s in parts["scenarios"]:
+        uca = ucas.get(s.get("uca") or "")
+        row_text = f"row {s['row']}" if s.get("row") is not None else f"order {s.get('order')}"
+        head = s.get("counterpart") or s.get("uca") or row_text
+        if s.get("row") is not None:
+            head += f" ({row_text})"
+        types = ", ".join(f"type {t}" for t in s.get("types") or [])
+        label = "\n".join(x for x in (head, types, short(s.get("causal_factors"))) if x)
+        node_id = f"s_{s['id']}"
+        d.node(node_id, label, "action", lane=lane_of(uca))
+        if uca is not None:
+            d.edge(f"u_{slugify(uca['code'])}", node_id)
+        for c in s.get("constraints") or []:
+            if c in constraints:
+                d.edge(node_id, f"c_{slugify(c)}")
+    for code, u in ucas.items():
+        for h in u.get("hazards") or []:
+            if h in hazards:
+                d.edge(f"h_{slugify(h)}", f"u_{slugify(code)}")
+        if u.get("duplicate_of") in ucas:
+            d.edge(f"u_{slugify(code)}", f"u_{slugify(u['duplicate_of'])}", "duplicate of", style="dashed")
+    if not d.nodes:
+        d.note("empty", "The analysis holds no objects yet", lane="lane_hazards" if lanes else None)
     return d

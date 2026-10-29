@@ -66,7 +66,7 @@ def test_registry_aliases_and_fingerprint():
     with pytest.raises(NotFound):
         default_registry.get("unicorns")
     assert default_registry.fingerprint() == default_registry.fingerprint()
-    assert len(default_registry) == 16  # 9 of 0.8.x and the 7 of a control structure (0.9.0)
+    assert len(default_registry) == 22  # 9 of 0.8.x, the 7 of a control structure (0.9.0), the 6 of STPA (0.10.0)
 
 
 def test_safety_plan_matrix_fields_are_unique_and_grouped():

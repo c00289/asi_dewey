@@ -20,6 +20,11 @@ workbook = "dewey.xlsx"
 # Default: out/ next to the database.
 out = "out"
 
+# Folder where `asi-dewey stpa new from_confluence` and `stpa refresh` write their Hopper evidence bundles
+# (one folder per snapshot: manifest.json, pages.json, pages/<id>.md, hashed). Default: evidence/ next to the
+# database. $ASI_DEWEY_EVIDENCE overrides it.
+evidence_dir = "evidence"
+
 # Folder of control-structure datasets the factory's `template:wheel_loader_master` builder reads
 # (`cs new template:wheel_loader_master`): `<dir>/wheel-loader/datasets/` holds the six JSON files of
 # the owner's structure. Private (asi_standards); when absent the builder is listed as unavailable.
