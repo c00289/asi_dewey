@@ -11,6 +11,39 @@ All notable changes to ASI Dewey are recorded here. The format follows
 - Excel import diff preview; `fill` / `submit` / `cancel` puppeting of a screen's form; a
   `View > Automation` submenu or screen; date picker widget.
 
+## [0.10.1] - 2026-10-29
+
+The reader meets the real page. The acceptance run of Phase D (`stpa new from_bundle` on the owner's
+Locator bundle, 2026-10-29) failed with `row 16: code: 'UCA7' is already a STPA UCA of this analysis`: the
+page has shapes the first synthetic page lacked. Schema version unchanged (4).
+
+### Fixed
+- **A row whose controller cell is merged with the row above** (`stpa/confluence_reader.py`): the renderer
+  drops the merged cell, the row comes out short and Hopper pads it at the end, so every cell sat one
+  column to the left and the first UCA cell was read as the control action. The reader now finds the first
+  cell holding UCA content (`row_shift`): 2 for a whole row, 1 when the controller was merged (carried
+  down, the row's first cell is the control action), 0 when both were; a warning names the row and what it
+  was read as. On the real page this is three rows and five UCAs.
+- **A cell that is only a duplicate note** (`(duplicate of **UCA7** here)`): the bold code inside a
+  "duplicate of" note never creates a UCA. After a UCA in the same cell it is that UCA's `duplicate_of`;
+  alone it is a warning ("only a duplicate note of UCA7, which is defined elsewhere; nothing read"). A note
+  without a code (`(duplicate of <the other> row)`) is a warning too. This is what raised the error.
+- **An unbolded code after a hazard list** (`**UCA22** text *\[H2, H4.5\]*UCA28 more text`): `UCA28` is a
+  UCA of its own, not the tail of UCA22's text (`embolden_loose_codes` makes a code that opens a cell or
+  follows a hazard list a bold run before the cell is cut).
+- **The constraints cell**: `**CSTR\[1,2,3\]**` lists expand to references, `duplicate **CSTR61**`,
+  `**duplicate CSTR73 and CSTR74**` and `**see also CSTR2**` are references, and a broken escape
+  (`**CSTR\[63`, no closing bracket) is a warning naming the row, the numbers still read; never a crash.
+- **A code read twice** (any unexpected shape left): the reader keeps the first, skips the later one with a
+  warning naming both rows, and the load no longer fails; the service's uniqueness rule stands.
+
+### Tests
+- 252 to 256. A second synthetic page, `tests/fixtures/conveyor-gate-stpa-quirks.md` (two merged-cell rows,
+  a lone duplicate note, a note without a code, an unbolded code after a hazard list, a code listed twice,
+  the constraint lists, notes and a broken escape): the reader's rows, categories, twins and warnings; the
+  constraint cell shapes one by one; the page loads through the factory, validates and refreshes to "same".
+  The acceptance on the real bundle is recorded in the commit as counts only.
+
 ## [0.10.0] - 2026-10-29
 
 The STPA step objects, Phase D of

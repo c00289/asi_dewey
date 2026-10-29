@@ -25,7 +25,17 @@ from asi_dewey.automation.cli import main
 from asi_dewey.errors import NotFound, ValidationError
 from asi_dewey.services.stpa_service import ANALYSIS_ENTITY, PART_ENTITIES, code_key, match_controller
 from asi_dewey.stpa import StpaFactory, read_bundle
-from asi_dewey.stpa.confluence_reader import cite, codes_in, read_constraint_cell, read_stpa_page
+from asi_dewey.stpa.confluence_reader import (
+    cite,
+    codes_in,
+    constraint_codes,
+    embolden_loose_codes,
+    read_constraint_cell,
+    read_constraints,
+    read_stpa_page,
+    read_uca_cell,
+    row_shift,
+)
 from asi_dewey.stpa.stpa_factory import DEFAULT_FORMATS, FORMATS
 from asi_dewey.version import SCHEMA_VERSION, __version__
 
@@ -915,3 +925,140 @@ def test_the_stpa_screen_creates_validates_refreshes_and_exports(brain, bundle, 
         window.close()
         del window
         gc.collect()
+
+
+# -- 0.10.1: the shapes the real page has and the first synthetic page lacked ----------------------------
+QUIRKS_FILE = REPO_ROOT / "tests" / "fixtures" / "conveyor-gate-stpa-quirks.md"
+QUIRKS_BODY = QUIRKS_FILE.read_text(encoding="utf-8")
+QUIRKS_COUNTS = {"losses": 0, "hazards": 4, "ucas": 14, "scenarios": 6, "constraints": 6}
+
+
+def test_reader_reads_rows_whose_controller_cell_was_merged_with_the_row_above():
+    """A controller cell merged with the row above is dropped by the renderer, so the row is short and its
+    cells shift left: the first cell holding UCA content says where the categories start, the controller is
+    carried down, the control action is the row's first cell."""
+    data = read_stpa_page(QUIRKS_BODY, page_id="900000002", url=URL, version=3)
+    assert {k: len(data[k]) for k in QUIRKS_COUNTS} == QUIRKS_COUNTS
+    ucas = {u["code"]: u for u in data["ucas"]}
+    assert ucas["UCA7"]["controller"] == "Gate Controller" and ucas["UCA7"]["control_action"] == "Hold Gate"
+    assert ucas["UCA7"]["category"] == "providing" and ucas["UCA8"]["category"] == "timing_order"
+    assert ucas["UCA10"]["control_action"] == "Signal Lamp" and ucas["UCA10"]["category"] == "not_providing"
+    assert ucas["UCA13"]["category"] == "providing" and ucas["UCA14"]["category"] == "duration"
+    assert ucas["UCA6"]["controller"] == "Supervisor" and ucas["UCA6"]["control_action"] == "Hold Request"
+    shifted = [w for w in data["warnings"] if "merged with the row above" in w]
+    assert shifted == [
+        "Context Table row 2: the controller cell is merged with the row above; read as Gate Controller / Hold Gate",
+        "Context Table row 3: the controller cell is merged with the row above; read as Gate Controller / Signal Lamp",
+    ]
+    assert row_shift(("Gate Controller", "Close Gate", "**UCA1 **x", "", "", "")) == 2
+    assert row_shift(("Hold Gate", "(duplicate of **UCA6** here)", "**UCA7 **x", "", "", "")) == 1
+    assert row_shift(("**UCA9 **x *\\[H1\\]*", "", "", "", "", "")) == 0
+    assert row_shift(("Belt Drive", "Run Belt", "[Other](https://example.invalid/wiki/pages/1)", "", "", "")) == 2
+    assert row_shift(("", "", "", "", "", "")) is None
+
+
+def test_reader_never_creates_a_uca_from_a_duplicate_note_and_reads_unbolded_codes():
+    data = read_stpa_page(QUIRKS_BODY, page_id="900000002", url=URL, version=3)
+    ucas = {u["code"]: u for u in data["ucas"]}
+    # "(duplicate of **UCA9**)" after UCA3 in the same cell: UCA3's twin, not a UCA of the cell
+    assert ucas["UCA3"]["retired"] is True and ucas["UCA3"]["duplicate_of"] == "UCA9"
+    assert ucas["UCA9"]["controller"] == "Supervisor"  # read where it is defined, once
+    # "(duplicate of **UCA6** here)" alone in a cell: a warning, nothing created, UCA6 stays the Supervisor's
+    assert ucas["UCA6"]["controller"] == "Supervisor" and ucas["UCA6"]["text"] == "When maintenance is in the opening."
+    assert (
+        "Context Table row 2 (Gate Controller / Hold Gate): the not_providing cell is only a duplicate note of UCA6, "
+        "which is defined elsewhere; nothing read"
+    ) in data["warnings"]
+    # "(duplicate of the signal lamp row)": no code at all, a warning, nothing created
+    assert (
+        "Context Table row 5 (Belt Drive / Run Belt): the not_providing cell is a duplicate note without a code "
+        "('(duplicate of the signal lamp row)'); nothing read"
+    ) in data["warnings"]
+    # an unbolded code right after a hazard list is a UCA of its own, not the tail of the one before it
+    assert ucas["UCA11"]["text"] == "When a line restarts {after a fault}." and ucas["UCA11"]["hazards"] == ["H2.2"]
+    assert ucas["UCA12"]["text"] == "When the lamp is masked by dust." and ucas["UCA12"]["hazards"] == ["H2.1"]
+    assert embolden_loose_codes("**UCA22** t *\\[H2, H4.5\\]*UCA28 more *\\[H4.5\\]*") == (
+        "**UCA22** t *\\[H2, H4.5\\]***UCA28 **more *\\[H4.5\\]*"
+    )
+    assert embolden_loose_codes("UCA8 plain") == "**UCA8 **plain" and embolden_loose_codes("**UCA8 **x") == "**UCA8 **x"
+    # a code read twice: the later one is skipped with a warning naming both rows, the load never fails
+    assert [u["code"] for u in data["ucas"]].count("UCA6") == 1
+    assert (
+        "Context Table row 6 (Belt Drive / Lamp Test): UCA6 was already read in row 4; the later one is skipped"
+        in data["warnings"]
+    )
+    assert ucas["UCA10"]["hazards"] == ["H2.1", "H9"]
+    assert "UCA10: cites hazard H9, which the page does not list" in data["warnings"]
+    # the scenario table's unbolded "UCA12 ..." row names UCA12, which the context table now holds
+    assert not any("not in the context table" in w for w in data["warnings"])
+    cell, warnings = read_uca_cell(
+        "**UCA1 **x (duplicate of",
+        who="row 9",
+        category="providing",
+        controller="c",
+        action="a",
+        where="w",
+        hazard_codes=set(),
+        seen={},
+        row_number=9,
+        order=1,
+    )
+    assert [u["code"] for u in cell] == ["UCA1"] and warnings == ["row 9: UCA1 says 'duplicate of' but names no UCA"]
+    cell, warnings = read_uca_cell(
+        "(duplicate of",
+        who="row 9",
+        category="providing",
+        controller="c",
+        action="a",
+        where="w",
+        hazard_codes=set(),
+        seen={},
+        row_number=9,
+        order=1,
+    )
+    assert cell == [] and warnings == ["row 9: the providing cell is a duplicate note that names no UCA; nothing read"]
+
+
+def test_reader_tolerates_constraint_lists_duplicate_notes_and_broken_escapes():
+    data = read_stpa_page(QUIRKS_BODY, page_id="900000002", url=URL, version=3)
+    rows = {s["row"]: s for s in data["scenarios"]}
+    assert rows[2]["constraints"] == ["CSTR1", "CSTR2", "CSTR3"]  # **CSTR\[1,2\]** expands to references
+    assert rows[3]["constraints"] == ["CSTR3"]  # duplicate **CSTR3**: a reference
+    assert rows[4]["constraints"] == ["CSTR4", "CSTR2", "CSTR1", "CSTR3"]  # a lone code, "see also", a duplicate list
+    assert rows[5]["constraints"] == ["CSTR5"]  # **CSTR\[5 **: broken escape, read as a reference with a warning
+    assert rows[6]["constraints"] == ["CSTR5", "CSTR6"]  # **duplicate CSTR5 and CSTR6**
+    constraints = {c["code"]: c for c in data["constraints"]}
+    assert constraints["CSTR4"]["text"] == "The closing state must be reported every cycle."
+    assert constraints["CSTR2"]["text"] == "A stuck position sensor must be treated as a fault."  # row 1 spelled it
+    assert constraints["CSTR5"]["text"] == "" and constraints["CSTR6"]["text"] == ""
+    assert (
+        "Loss Scenarios row 5: broken constraint list CSTR\\[5 (no closing bracket); read as CSTR5"
+        in (data["warnings"])
+    )
+    assert constraint_codes("CSTR\\[66, 10, 11\\] and CSTR 7") == (["CSTR66", "CSTR10", "CSTR11", "CSTR7"], [])
+    codes, warnings = constraint_codes("CSTR\\[63, 64")
+    assert codes == ["CSTR63", "CSTR64"] and warnings and "no closing bracket" in warnings[0]
+    assert read_constraint_cell("duplicate **CSTR61**") == [("CSTR61", "")]
+    assert read_constraint_cell("**duplicate CSTR73 and CSTR74**") == [("CSTR73", ""), ("CSTR74", "")]
+    assert read_constraint_cell("**CSTR81 **text (more) **see CSTR55****duplicate CSTR56**") == [
+        ("CSTR81", "text (more)"),
+        ("CSTR55", ""),
+        ("CSTR56", ""),
+    ]
+    assert read_constraints("**CSTR\\[63")[1] and read_constraints("")[0] == []
+    # the same UCA named twice across rows and a "(same as UCA5 CF)" note are text, not references
+    assert rows[2]["causal_factors"].endswith("(same as UCA5 CF)") and rows[1]["uca"] == rows[2]["uca"] == "UCA1"
+
+
+def test_the_quirky_page_loads_through_the_factory_without_a_hard_failure(brain, tmp_path):
+    bundle = write_bundle(tmp_path / "quirks", QUIRKS_BODY, version=3, page_id="900000002", comments=[])
+    made = brain.execute("stpa", action="new", target="from_bundle", **{"from": str(bundle)}, name="Quirks")
+    assert made.ok, made.errors
+    assert made.data["counts"] == QUIRKS_COUNTS
+    assert sum(1 for u in brain.service("stpa_uca").list() if u["retired"]) == 1
+    assert [u["duplicate_of"] for u in brain.service("stpa_uca").list() if u["duplicate_of"]] == ["UCA9"]
+    assert any("was already read in row 4" in w for w in made.warnings)
+    assert any("only a duplicate note of UCA6" in w for w in made.warnings)
+    assert brain.execute("stpa", action="validate", target="quirks").ok
+    same = brain.execute("stpa", action="refresh", target="quirks", **{"from": str(bundle)})
+    assert same.ok and same.data["same"] is True
