@@ -6,9 +6,14 @@ import tkinter as tk
 from tkinter import ttk
 from typing import Any
 
+from ..services.control_structure_service import PART_ENTITIES
 from ..services.queries import DUE_WINDOW_DAYS, open_jira_tickets, recent_changes, tasks_due
 from .screens import Screen, fit_columns
 from .theme import GridBanner
+
+# the parts of a control structure have no tile of their own: the structure's tile counts the
+# structures, the parts are counted under it by the Control structures screen (phase 3)
+UNTILED: frozenset[str] = frozenset(PART_ENTITIES)
 
 
 class DashboardScreen(Screen):
@@ -18,7 +23,8 @@ class DashboardScreen(Screen):
         self.tiles = ttk.LabelFrame(self, text="Rows per entity (click to open)")
         self.tiles.pack(fill="x", pady=(0, 8))
         self._tile_vars: dict[str, tk.StringVar] = {}
-        for index, schema in enumerate(self.brain.registry):
+        tiled = [schema for schema in self.brain.registry if schema.name not in UNTILED]
+        for index, schema in enumerate(tiled):
             var = tk.StringVar(value="0")
             self._tile_vars[schema.name] = var
             tile = ttk.Frame(self.tiles, padding=8, style="Tile.TFrame")

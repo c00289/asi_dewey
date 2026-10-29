@@ -17,7 +17,7 @@ from .locks import guard, lock_dir
 from .models import ModelFactory
 from .repositories import RepositoryFactory
 from .schema import LookupRegistry, SchemaRegistry, default_lookups, default_registry
-from .services import EntityService, JiraService, TransferService
+from .services import ControlStructureService, EntityService, JiraService, TransferService, service_class
 from .storage import StorageFactory
 from .version import SCHEMA_VERSION, __version__
 
@@ -29,15 +29,19 @@ ENV_WORKBOOK = "ASI_DEWEY_WORKBOOK"
 ENV_OUT = "ASI_DEWEY_OUT"
 ENV_CONFIG = "ASI_DEWEY_CONFIG"
 CONFIG_NAME = "dewey.toml"
-CONFIG_KEYS = ("db", "workbook", "out")
+ENV_CONTROL_STRUCTURES = "ASI_DEWEY_CONTROL_STRUCTURES"
+CONFIG_KEYS = ("db", "workbook", "out", "control_structures_dir")
 TEXT_CONFIG_KEYS = ("jira_jql", "jira_live_jql")
+# the private shelf of control-structure datasets the template builder reads (docs/control-structure-plan.md, 3)
+DEFAULT_CONTROL_STRUCTURES_DIR = "../asi_standards/control-structures"
 
 
 def load_config(path: str | Path | None = None) -> dict[str, Any]:
     """Read ``dewey.toml``: the ``path`` given, else ``$ASI_DEWEY_CONFIG``, else ``./dewey.toml``.
 
-    Keys ``db``, ``workbook`` and ``out`` are paths; a relative one resolves against the config
-    file's own directory, so the workbook and the generated files can live in another folder.
+    Keys ``db``, ``workbook``, ``out`` and ``control_structures_dir`` are paths; a relative one
+    resolves against the config file's own directory, so the workbook and the generated files can
+    live in another folder.
     ``jira_jql`` and ``jira_live_jql`` are plain text (the queries ``jira sync`` and ``jira live``
     run by default). Any other key is ignored (``jira_live_autofetch`` of 0.7.3 to 0.8.0 among
     them: the window it configured was removed in 0.8.1). Missing file: ``{}``.
@@ -109,6 +113,7 @@ class Brain:
         self._services: dict[str, EntityService] = {}
         self.transfer = TransferService(self)
         self.jira = JiraService(self)
+        self.control_structures = ControlStructureService(self)
         self.dispatcher = Dispatcher(self)
         if workbook_path is not None:
             self.workbook_path = str(workbook_path)
@@ -131,15 +136,31 @@ class Brain:
             self.out_dir = DEFAULT_OUT_NAME
         else:
             self.out_dir = str(Path(self.db_path).with_name(DEFAULT_OUT_NAME))
+        # the shelf the template builder reads: env, then dewey.toml, then beside the working directory
+        if os.environ.get(ENV_CONTROL_STRUCTURES):
+            self.control_structures_dir = os.environ[ENV_CONTROL_STRUCTURES]
+        elif self.config.get("control_structures_dir"):
+            self.control_structures_dir = self.config["control_structures_dir"]
+        else:
+            self.control_structures_dir = str((Path.cwd() / DEFAULT_CONTROL_STRUCTURES_DIR).resolve())
 
     # -- access ---------------------------------------------------------
     def service(self, entity: str) -> EntityService:
         schema = self.registry.get(entity)
         if schema.name not in self._services:
-            self._services[schema.name] = EntityService(
-                schema, self.repositories.for_entity(schema), self.storage, self.lookups, self.events
+            self._services[schema.name] = service_class(schema.name)(
+                schema, self.repositories.for_entity(schema), self.storage, self.lookups, self.events, self
             )
         return self._services[schema.name]
+
+    @property
+    def factory(self):
+        """The ``ControlStructureFactory`` on this Brain (built on first use; see ``asi_dewey.stpa``)."""
+        if not hasattr(self, "_factory"):
+            from .stpa.factory import ControlStructureFactory
+
+            self._factory = ControlStructureFactory(self)
+        return self._factory
 
     def execute(
         self, verb: str, args: dict[str, Any] | None = None, *, actor: str = "python", **kwargs: Any
@@ -162,6 +183,7 @@ class Brain:
             "database": self.storage.describe(),
             "workbook_path": self.workbook_path,
             "out_dir": self.out_dir,
+            "control_structures_dir": self.control_structures_dir,
             "config_path": self.config.get("path"),
             "lock_dir": str(lock_dir()),
             "locks": guard.describe(self.db_path),

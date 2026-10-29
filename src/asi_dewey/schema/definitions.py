@@ -13,9 +13,9 @@ from .fields import FieldSpec, FieldType
 from .lookups import default_lookups
 from .registry import register_entity
 
-T, M, I, B, D, U, E = (  # noqa: E741
+T, M, I, B, D, U, E, J = (  # noqa: E741
     FieldType.TEXT, FieldType.MULTILINE, FieldType.INT, FieldType.BOOL,
-    FieldType.DATE, FieldType.URL, FieldType.ENUM,
+    FieldType.DATE, FieldType.URL, FieldType.ENUM, FieldType.JSON,
 )
 
 # -- lookups ----------------------------------------------------------------
@@ -38,6 +38,16 @@ default_lookups.register("jira_status", ("open", "in progress", "blocked", "done
 default_lookups.register("pdp_phase", ("1", "2", "3", "4", "5", "6"))
 default_lookups.register("lifecycle_phase", LIFECYCLE_PHASES)
 default_lookups.register("plan_status", ("Pending", "Ongoing", "Blocked", "Alternative", "Out-of-Scope", "Done"))
+# control structures (docs/control-structure-plan.md, section 2): the box kinds are asi_escher's
+# CONTROL_NODE_KINDS, the arrow kinds its CONTROL_EDGE_KINDS; the service refuses a value outside them
+CS_STATUSES = ("Draft", "Reviewed", "Baselined")
+CS_CONTROLLER_KINDS = (
+    "controller", "human_controller", "controlled_process", "environment", "sensor", "actuator", "external_system",
+)
+CS_EDGE_KINDS = ("control_action", "feedback")
+default_lookups.register("cs_status", CS_STATUSES)
+default_lookups.register("cs_controller_kind", CS_CONTROLLER_KINDS)
+default_lookups.register("cs_edge_kind", CS_EDGE_KINDS)
 
 # -- simple entities ----------------------------------------------------------
 TASK = register_entity(EntitySchema(
@@ -192,4 +202,130 @@ SAFETY_PLAN_ROW = register_entity(EntitySchema(
     ),
 ))
 
-ALL_ENTITIES = (TASK, FACT, MACHINE_FUNCTION, USE_CASE, LINK, JIRA_TICKET, QMS_DOCUMENT, PERSON, SAFETY_PLAN_ROW)
+# -- STPA control structures ---------------------------------------------------
+# One structure holds everything; every part names its structure by slug and its parent by key, so
+# the rows survive any export and import (a workbook sheet carries no id column) and a later STPA
+# step can point at a controller by key and a signal by its id (docs/control-structure-plan.md, 2).
+STRUCTURE = FieldSpec(
+    "structure", T, "structure", required=True, help="Slug of the control structure this row belongs to",
+)
+
+CONTROL_STRUCTURE = register_entity(EntitySchema(
+    name="control_structure", table="control_structures", label="Control Structure", sheet="CS structures",
+    description=(
+        "An STPA control structure: the controllers, their algorithms and process models, the control actions "
+        "and feedback between them. Built by the factory, drawn by asi_escher, exported as draw.io, PNG and SVG."
+    ),
+    order_by=("name", "id"),
+    fields=(
+        FieldSpec("name", T, "name", required=True),
+        FieldSpec("slug", T, "slug", help="Stable key the parts point at; unique; from the name when not given"),
+        FieldSpec("system", T, "system", help="The system the structure controls, e.g. an autonomous loader"),
+        FieldSpec("description", M, "description"),
+        FieldSpec("source", T, "source", help="The file it came from, or 'built by hand'"),
+        FieldSpec("status", E, "status", lookup="cs_status"),
+        FieldSpec("revision", I, "revision"),
+    ),
+))
+
+CS_CONTROLLER = register_entity(EntitySchema(
+    name="cs_controller", table="cs_controllers", label="CS Controller", sheet="CS controllers",
+    description=(
+        "A box of a control structure: a controller, a human controller, the controlled process, "
+        "the environment, a sensor, an actuator or an external system."
+    ),
+    order_by=("structure", "order", "id"),
+    fields=(
+        STRUCTURE,
+        FieldSpec("order", I, "order", help="Top of the hierarchy first"),
+        FieldSpec("key", T, "key", help="Stable slug within the structure; from the name if empty"),
+        FieldSpec("name", T, "name", required=True),
+        FieldSpec("kind", E, "kind", lookup="cs_controller_kind"),
+        FieldSpec("responsibility", M, "responsibility"),
+        FieldSpec("process_model_title", T, "process model title"),
+        FieldSpec("note", M, "note"),
+    ),
+))
+
+CS_ALGORITHM = register_entity(EntitySchema(
+    name="cs_algorithm", table="cs_algorithms", label="CS Algorithm", sheet="CS algorithms",
+    description="A control algorithm of a controller (V1, S3 ...), drawn in the orange section of its box.",
+    order_by=("structure", "controller", "order", "id"),
+    fields=(
+        STRUCTURE,
+        FieldSpec("controller", T, "controller", required=True, help="Key of the controller that owns it"),
+        FieldSpec("order", I, "order"),
+        FieldSpec("code", T, "code", required=True, help="V1, S3 ..."),
+        FieldSpec("name", T, "name"),
+    ),
+))
+
+CS_PROCESS_MODEL_ENTRY = register_entity(EntitySchema(
+    name="cs_process_model_entry", table="cs_process_model_entries", label="CS Process Model Entry",
+    sheet="CS process model",
+    description=(
+        "One entry of a controller's process model: a heading naming control actions, the variables "
+        "the decision depends on, the feedback that updates them."
+    ),
+    order_by=("structure", "controller", "order", "id"),
+    fields=(
+        STRUCTURE,
+        FieldSpec("controller", T, "controller", required=True, help="Key of the controller that owns it"),
+        FieldSpec("order", I, "order"),
+        FieldSpec("heading", T, "heading"),
+        FieldSpec("control_actions", J, "control actions", help="Signal ids, one per line"),
+        FieldSpec("variables", J, "variables", help="One per line"),
+        FieldSpec("updated_by", J, "updated by", help="Signal ids, one per line"),
+        FieldSpec("references", J, "references", help="Every signal id the entry mentions, one per line"),
+    ),
+))
+
+CS_EDGE = register_entity(EntitySchema(
+    name="cs_edge", table="cs_edges", label="CS Edge", sheet="CS edges",
+    description=(
+        "An arrow between two controllers carrying signals: a control action down the hierarchy or feedback up."
+    ),
+    order_by=("structure", "order", "id"),
+    fields=(
+        STRUCTURE,
+        FieldSpec("order", I, "order"),
+        FieldSpec("key", T, "key", help="Stable key within the structure, e.g. e7; the next free one when not given"),
+        FieldSpec("kind", E, "kind", lookup="cs_edge_kind"),
+        FieldSpec("source", T, "source", required=True, help="Key of the controller the arrow leaves"),
+        FieldSpec("target", T, "target", required=True, help="Key of the controller the arrow enters"),
+    ),
+))
+
+CS_SIGNAL = register_entity(EntitySchema(
+    name="cs_signal", table="cs_signals", label="CS Signal", sheet="CS signals",
+    description="One line on an arrow: CA-xx a control action, FB-xx feedback, with its name.",
+    order_by=("structure", "edge", "order", "id"),
+    fields=(
+        STRUCTURE,
+        FieldSpec("edge", T, "edge", required=True, help="Key of the edge that carries it"),
+        FieldSpec("order", I, "order"),
+        FieldSpec("signal_id", T, "signal id", required=True, help="CA-01, FB-12 ..."),
+        FieldSpec("kind", E, "kind", lookup="cs_edge_kind", help="Defaults to the edge's kind and must match it"),
+        FieldSpec("name", T, "name"),
+        FieldSpec("placeholder", B, "placeholder", help="A signal still to be numbered"),
+    ),
+))
+
+CS_NOTE = register_entity(EntitySchema(
+    name="cs_note", table="cs_notes", label="CS Note", sheet="CS notes",
+    description="A free-standing text of a control structure, floating beside a controller when attached to one.",
+    order_by=("structure", "order", "id"),
+    fields=(
+        STRUCTURE,
+        FieldSpec("order", I, "order"),
+        FieldSpec("text", M, "text", required=True),
+        FieldSpec("attached_to", T, "attached to", help="Key of the controller it floats beside, or empty"),
+    ),
+))
+
+CS_ENTITIES = (
+    CONTROL_STRUCTURE, CS_CONTROLLER, CS_ALGORITHM, CS_PROCESS_MODEL_ENTRY, CS_EDGE, CS_SIGNAL, CS_NOTE,
+)
+ALL_ENTITIES = (
+    TASK, FACT, MACHINE_FUNCTION, USE_CASE, LINK, JIRA_TICKET, QMS_DOCUMENT, PERSON, SAFETY_PLAN_ROW, *CS_ENTITIES,
+)

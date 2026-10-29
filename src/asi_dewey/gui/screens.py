@@ -132,7 +132,12 @@ class ScreenFactory:
 # jira_ticket: a cache fed by `jira sync`, read on the Dashboard and through the verbs (the JIRA Live
 # Data screen of 0.5.0 was removed in 0.8.1 by owner decision; the `jira` verbs stay).
 # safety_plan_row: the Safety Plan is Kletz's since the 2026-10-27 split.
-HIDDEN_ENTITY_SCREENS: frozenset[str] = frozenset({"jira_ticket", "safety_plan_row"})
+# control_structure and its parts: their screen is phase 3 of docs/control-structure-plan.md (0.10.0);
+# until then the `cs` verbs and the generic verbs reach them.
+HIDDEN_ENTITY_SCREENS: frozenset[str] = frozenset({
+    "jira_ticket", "safety_plan_row",
+    "control_structure", "cs_controller", "cs_algorithm", "cs_process_model_entry", "cs_edge", "cs_signal", "cs_note",
+})
 
 
 def build_default_screens(brain: Brain, hidden: frozenset[str] = HIDDEN_ENTITY_SCREENS) -> ScreenFactory:

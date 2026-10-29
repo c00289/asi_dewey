@@ -22,12 +22,27 @@ class EntityService:
         storage: Storage,
         lookups: LookupRegistry,
         events: EventBus,
+        brain: Any = None,
     ) -> None:
         self.schema = schema
         self.repo = repository
         self.storage = storage
         self.lookups = lookups
         self.events = events
+        self.brain = brain  # the Brain that owns the service, for rules that look at other entities
+
+    # -- hooks (a subclass adds the rules of its entity; see services/control_structure_service.py) --
+    def check(self, clean: dict[str, Any], stored: dict[str, Any] | None) -> list[str]:
+        """Entity rules on a create (``stored`` is ``None``) or an update (``stored`` is the row as it
+        is, ``clean`` the fields about to change). Returns warnings; raises ``ValidationError`` to
+        refuse. The default has no rules."""
+        return []
+
+    def before_delete(self, stored: dict[str, Any], cascade: bool, actor: str) -> None:
+        """Called inside the transaction before the row goes; raises to refuse, or deletes dependants."""
+
+    def after_change(self, action: str, row: dict[str, Any], actor: str) -> None:
+        """Called after a create, update or delete was committed and the entity event published."""
 
     # -- reads ----------------------------------------------------------
     def list(
@@ -83,33 +98,43 @@ class EntityService:
         if not clean.get(UID_FIELD):
             clean[UID_FIELD] = new_uid()  # assigned once, here; a uid given by the caller (a file) is kept
         with self.storage.transaction():
+            warnings.extend(self.check(clean, None))
             row = self._insert(clean)
             self.storage.audit(actor, "create", self.schema.name, row["id"], clean)
         self.events.publish("entity.created", entity=self.schema.name, id=row["id"], actor=actor, row=row)
+        self.after_change("create", row, actor)
         return row, warnings
 
     def update(
         self, row_id: int, data: Mapping[str, Any], actor: str = "python"
     ) -> tuple[dict[str, Any], list[str]]:
         clean, warnings = self.schema.coerce_row(data, self.lookups, partial=True)
+        stored = self.get(row_id)
         if UID_FIELD in clean:
-            if clean[UID_FIELD] != self.get(row_id).get(UID_FIELD):
+            if clean[UID_FIELD] != stored.get(UID_FIELD):
                 raise ValidationError(self.schema.name, [f"{UID_FIELD} is immutable"])
             del clean[UID_FIELD]  # the same value: a no-op
         with self.storage.transaction():
+            warnings.extend(self.check(clean, stored))
             row = self.repo.update(row_id, clean)
             if row is None:
                 raise NotFound(f"{self.schema.name} {row_id} not found")
             self.storage.audit(actor, "update", self.schema.name, row_id, clean)
         self.events.publish("entity.updated", entity=self.schema.name, id=row_id, actor=actor, row=row)
+        self.after_change("update", row, actor)
         return row, warnings
 
-    def delete(self, row_id: int, actor: str = "python") -> None:
+    def delete(self, row_id: int, actor: str = "python", cascade: bool = False) -> None:
+        """Delete one row. ``cascade`` lets an entity with dependants (a control structure, a
+        controller, an edge) take them along; without it such a delete is refused."""
         with self.storage.transaction():
+            stored = self.get(row_id)
+            self.before_delete(stored, cascade, actor)
             if not self.repo.delete(row_id):
                 raise NotFound(f"{self.schema.name} {row_id} not found")
             self.storage.audit(actor, "delete", self.schema.name, row_id)
         self.events.publish("entity.deleted", entity=self.schema.name, id=row_id, actor=actor)
+        self.after_change("delete", stored, actor)
 
     def load_rows(
         self,
