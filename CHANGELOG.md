@@ -25,6 +25,10 @@ the same day, found here by inspection before anyone lost a row. Schema version 
   spinbox's) once, right after the theme is applied: the wheel scrolls, a value changes only by a
   pick or a keystroke. Same fix as the sister tool, by convention, not shared code.
 
+### Removed
+- `issues_to_strings` in `generate/figures.py`: a two-line helper the integration plan sketched
+  that nothing ever called; the issue dicts `build_diagram` returns carry `message` themselves.
+
 ### Tests
 - `test_mouse_wheel_over_a_combobox_never_picks_a_value`: wheels twice over the task-class box of
   a selected row and reads the form back unchanged, then puts Tk's stock binding back to show the

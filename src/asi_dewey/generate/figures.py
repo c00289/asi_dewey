@@ -37,10 +37,6 @@ def issues_to_dicts(issues: list[Any]) -> list[dict[str, Any]]:
     ]
 
 
-def issues_to_strings(issues: list[dict[str, Any]]) -> list[str]:
-    return [str(i["message"]) for i in issues]
-
-
 def build_diagram(
     diagram: Any, out_dir: Any, name: str, *, formats: tuple[str, ...] = FORMATS, dpi: int = DEFAULT_DPI
 ) -> dict[str, Any]:
