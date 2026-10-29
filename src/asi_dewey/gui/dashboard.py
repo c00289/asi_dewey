@@ -14,8 +14,10 @@ from .theme import GridBanner
 
 # the parts of a control structure or of an STPA analysis have no tile of their own: the structure's
 # (the analysis's) tile counts the structures (the analyses), the parts are counted under it by the
-# Control structures (phase 3) and STPA analyses screens
+# Control structures and STPA analyses screens
 UNTILED: frozenset[str] = frozenset(PART_ENTITIES) | frozenset(STPA_PART_ENTITIES)
+# a tile opens its entity's screen (``entity:<name>``) unless the entity has a screen of its own
+TILE_SCREENS: dict[str, str] = {"control_structure": "control_structures"}
 
 
 class DashboardScreen(Screen):
@@ -33,7 +35,7 @@ class DashboardScreen(Screen):
             tile.grid(row=index // 5, column=index % 5, padx=4, pady=4, sticky="nsew")
             ttk.Label(tile, textvariable=var, style="TileCount.TLabel").pack()
             ttk.Label(tile, text=schema.sheet.upper(), style="TileName.TLabel").pack()
-            key = f"entity:{schema.name}"
+            key = TILE_SCREENS.get(schema.name, f"entity:{schema.name}")
             if key not in self.window.factory:
                 continue  # counted but not clickable: the entity has no screen (HIDDEN_ENTITY_SCREENS)
             for widget in (tile, *tile.winfo_children()):

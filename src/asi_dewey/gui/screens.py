@@ -132,10 +132,11 @@ class ScreenFactory:
 # jira_ticket: a cache fed by `jira sync`, read on the Dashboard and through the verbs (the JIRA Live
 # Data screen of 0.5.0 was removed in 0.8.1 by owner decision; the `jira` verbs stay).
 # safety_plan_row: the Safety Plan is Kletz's since the 2026-10-27 split.
-# control_structure and its parts: their screen is phase 3 of docs/control-structure-plan.md (0.10.0);
-# until then the `cs` verbs and the generic verbs reach them.
+# control_structure and its parts: one screen for the seven, Control structures (0.10.0,
+# gui/control_structure_screen.py), instead of a table each; the generic verbs reach them too.
 # stpa_analysis and its parts: one screen for the six, STPA analyses (gui/stpa_screen.py), where the
 # parts are the tabs of the selected analysis; the `stpa` verbs and the generic verbs reach them too.
+CONTROL_STRUCTURES_SCREEN = "control_structures"  # the screen's key: `/screen {"show": "control_structures"}`
 STPA_SCREEN = "stpa"  # the screen's key: `/screen {"show": "stpa"}`
 HIDDEN_ENTITY_SCREENS: frozenset[str] = frozenset({
     "jira_ticket", "safety_plan_row",
@@ -145,7 +146,9 @@ HIDDEN_ENTITY_SCREENS: frozenset[str] = frozenset({
 
 
 def build_default_screens(brain: Brain, hidden: frozenset[str] = HIDDEN_ENTITY_SCREENS) -> ScreenFactory:
-    """Dashboard, one entity screen per entity not in ``hidden``, STPA analyses, Export / Import, Generate."""
+    """Dashboard, one entity screen per entity not in ``hidden``, Control structures, STPA analyses,
+    Export / Import, Generate."""
+    from .control_structure_screen import ControlStructureScreen
     from .dashboard import DashboardScreen
     from .entity_screen import EntityScreen
     from .generate_screen import GenerateScreen
@@ -164,6 +167,7 @@ def build_default_screens(brain: Brain, hidden: frozenset[str] = HIDDEN_ENTITY_S
             f"entity:{schema.name}", schema.sheet,
             lambda master, window, s=schema: EntityScreen(master, window, s),
         )
+    factory.register(CONTROL_STRUCTURES_SCREEN, "Control structures", ControlStructureScreen)
     factory.register(STPA_SCREEN, "STPA analyses", StpaScreen)
     factory.register("transfer", "Export / Import", TransferScreen)
     factory.register("generate", "Generate", GenerateScreen)

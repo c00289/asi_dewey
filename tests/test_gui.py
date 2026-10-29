@@ -44,7 +44,7 @@ def test_navigation_and_dashboard(window):
         "dashboard", "entity:task", "entity:fact", "entity:machine_function", "entity:use_case",
         "entity:link", "entity:qms_document", "entity:person",
     ]
-    assert keys[-2:] == ["transfer", "generate"] and "stpa" in keys  # the STPA analyses screen (0.10.0)
+    assert keys[-2:] == ["transfer", "generate"] and "control_structures" in keys and "stpa" in keys  # 0.10.0
     assert [k for k in keys if k.startswith("entity:")] == keys[1:8]  # no other entity has a table of its own
     assert window.current.key == "dashboard"
     dash = window.current

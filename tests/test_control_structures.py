@@ -285,6 +285,38 @@ def test_duplicate_signal_ids_in_a_file_are_warnings_and_validate_repeats_them(b
     assert report.ok and "signal CA-01 is carried by 2 edges: e1, e3" in report.warnings
 
 
+def test_a_signal_shared_by_two_edges_from_one_controller_is_information(brain):
+    """One feedback to two receivers (the owner's structure has two such) is legitimate: no warning when
+    the file is loaded, no refusal when typed, ``info`` in the validate report; a twin on an edge from
+    another controller stays a duplicate id."""
+    data = synthetic()
+    data["edges"].append(edge("e10", 10, "feedback", "perception", "site_supervisor"))
+    data["signals"].append({"edge": "e10", "order": 1, "signal_id": "FB-11", "name": "Obstacle list"})
+    row, warnings = brain.control_structures.create_from_dataset(data, "test")
+    assert warnings == [LOADED_UP_HILL]  # no duplicate warning: e7 and e10 both leave perception
+    report = brain.execute("cs", action="validate", target=row["slug"])
+    assert report.ok and report.warnings == [UP_HILL]
+    assert report.data["info"] == ["signal FB-11 is shared by 2 edges from perception: e7, e10"]
+    # typed: the same, allowed
+    brain.execute("create", entity="cs_edge", data={"structure": row["slug"], "key": "e11", "kind": "feedback",
+                                                    "source": "perception", "target": "remote_operator"})
+    typed = brain.execute("create", entity="cs_signal", data={"structure": row["slug"], "edge": "e11",
+                                                              "signal_id": "FB-11", "name": "Obstacle list"})
+    assert typed.ok and typed.warnings == []
+    assert brain.execute("cs", action="validate", target=row["slug"]).data["info"] == [
+        "signal FB-11 is shared by 3 edges from perception: e7, e10, e11"
+    ]
+    # from another controller: a refusal typed, a warning loaded, and validate says so
+    refused = brain.execute("create", entity="cs_signal", data={"structure": row["slug"], "edge": "e2",
+                                                                "signal_id": "FB-11", "name": "Obstacle list"})
+    assert not refused.ok and "already carried by edge e10, e11, e7" in refused.errors[0]
+    data["signals"].append({"edge": "e2", "order": 2, "signal_id": "FB-11", "name": "Obstacle list"})
+    row2, warnings = brain.control_structures.create_from_dataset(data, "test", name="Other", slug="other")
+    assert warnings == [LOADED_UP_HILL, "cs_signal 12: signal_id: 'FB-11' is already carried by edge e10, e7"]
+    report = brain.execute("cs", action="validate", target="other")
+    assert "signal FB-11 is carried by 3 edges: e2, e7, e10" in report.warnings and report.data["info"] == []
+
+
 def test_delete_is_refused_without_cascade_and_cascades_with_it(built):
     brain, row = built
     slug = row["slug"]
@@ -775,16 +807,17 @@ def test_a_0_8_4_database_opens_as_0_9_0_with_the_seven_tables_added(tmp_path):
         assert b.migration["created"] == [] and len(b.storage.fetchall("SELECT 1 FROM schema_migrations")) == 2
 
 
-# -- the window keeps its ten screens; the dashboard tiles the structure, not its parts ---------
-def test_the_parts_have_no_screen_and_one_tile(brain):
+# -- the seven share one screen; the dashboard tiles the structure, not its parts ----------------
+def test_the_parts_have_no_table_screen_and_one_tile(brain):
     from asi_dewey.gui.dashboard import UNTILED
-    from asi_dewey.gui.screens import HIDDEN_ENTITY_SCREENS, build_default_screens
+    from asi_dewey.gui.screens import CONTROL_STRUCTURES_SCREEN, HIDDEN_ENTITY_SCREENS, build_default_screens
 
     assert set(CS_ENTITIES) <= HIDDEN_ENTITY_SCREENS and frozenset(PART_ENTITIES) <= UNTILED
     assert "control_structure" not in UNTILED  # the structure's tile counts the structures
     factory = build_default_screens(brain)
     keys = [key for key, _title in factory.items()]
     assert not any(key.startswith("entity:cs_") or key == "entity:control_structure" for key in keys)
+    assert CONTROL_STRUCTURES_SCREEN in keys  # tests/test_control_structure_screen.py drives it
 
 
 # -- local only: the owner's structure, counts and files, never its text ----------------------
