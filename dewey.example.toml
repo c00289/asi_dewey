@@ -20,6 +20,13 @@ workbook = "dewey.xlsx"
 # Default: out/ next to the database.
 out = "out"
 
+# Folder of control-structure datasets the factory's `template:wheel_loader_master` builder reads
+# (`cs new template:wheel_loader_master`): `<dir>/wheel-loader/datasets/` holds the six JSON files of
+# the owner's structure. Private (asi_standards); when absent the builder is listed as unavailable.
+# Default: ../asi_standards/control-structures beside the working directory. $ASI_DEWEY_CONTROL_STRUCTURES
+# overrides it.
+control_structures_dir = "../asi_standards/control-structures"
+
 # JQL that `asi-dewey jira sync` pulls into the Jira Ticket table through asi_hopper (read only).
 # asi_hopper itself is configured by its own hopper.toml ($ASI_HOPPER_CONFIG); sign in once with
 # `asi-hopper auth login`.
