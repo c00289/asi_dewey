@@ -1,7 +1,7 @@
 # Control structures: a CRUD screen, a factory, and four ways out
 
-Status: **Phase 1 shipped in asi_escher 0.2.0, phase 2 shipped in asi_dewey 0.9.0** (2026-10-29); phase 3,
-the screen, is next. Written 2026-10-29. Owner's ask of 2026-10-29: "introduce a screen that is used as a
+Status: **Phase 1 shipped in asi_escher 0.2.0, phase 2 in asi_dewey 0.9.0, phase 3 (the screen) in
+asi_dewey 0.10.0** (2026-10-29); phase 4, STPA on top, is later. Written 2026-10-29. Owner's ask of 2026-10-29: "introduce a screen that is used as a
 CRUD for STPA control structures; the idea is that we would be able to use the factory design pattern to
 build a control structure, or many; we need to make control structures like the one in Roy's Brain, feel
 free to use the schema; users make control architectures that we will use for STPA later, and the user can
@@ -52,7 +52,8 @@ at a signal by `CA-13` and a controller by `vak_controller` across exports.
 
 Rules the service enforces: a signal's kind matches its edge's kind; a control action points down the
 hierarchy and feedback up (a warning, not a refusal: the owner's structure has lateral stop paths); signal
-ids are unique within a structure; deleting a controller deletes its algorithms, process-model entries and
+ids are unique within a structure, except that one signal on two edges leaving the same controller is one
+feedback to two receivers and legitimate (0.10.0: information, not a warning; the owner's FB-05 and FB-11); deleting a controller deletes its algorithms, process-model entries and
 the edges touching it (asked once in the window, `--cascade` on the CLI); duplicating a structure deep-copies
 everything under a new slug. Lists (`control_actions`, `variables`, `updated_by`) are JSON arrays in text
 columns, as the people lists of Kletz 0.19.0 are, edited one per line.
@@ -123,7 +124,8 @@ wheel rule of Kletz 0.15.2, unique Treeview iids):
   algorithm / process-model entry / edge / signal / note), with Save, New child, Delete. Lists are edited
   one item per line.
 - **Right**: the preview, escher's PNG of the structure re-rendered after every save (off the UI thread,
-  the file in the out folder's `figures/`), with a "Open in draw.io" button when draw.io is installed.
+  the file in the out folder's `figures/`), with the OCR verdict and the layout-issue count under it and
+  an "Open in VS Code" button on the `.drawio` when `code` is on the PATH (no draw.io program, section 4).
 - **Export… dialog**: the destination folder (remembered in the preferences, the last one used), the three
   format check boxes with **Select all** and **Select none**, `drawio` and `png` checked by default, a
   Preview of the file names, Export; an **Open in VS Code** button on the written `.drawio` file (`code

@@ -36,6 +36,32 @@ can do through the same commands.
 - `evidence_dir` in `dewey.toml` (`$ASI_DEWEY_EVIDENCE`; default `evidence/` beside the database):
   where the Confluence bundles go. `status` reports it.
 - `uv.lock` takes asi_dewey 0.10.0; asi_hopper stays 0.1.9.
+- **The Control structures screen**, phase 3 of docs/control-structure-plan.md. The owner's ask of
+  2026-10-29: "a screen that is used as a CRUD for STPA control structures… the user can export them
+  to their folder of preference… there must be Select all / Select none buttons, the default must be
+  drawio png". A navigation entry **Control structures** (`gui/control_structure_screen.py`): the
+  structures on the left (name, system, status, revision, the six counts; New from…, Duplicate,
+  Delete, Import draw.io…, Validate, Export…), the selected structure's parts in the middle as a
+  stacked tree (a controller, under it its algorithms, its process-model entries and the arrows
+  that leave it with their signals; the notes at the end; a search box; a form for the selected row
+  with Save, New child, Delete, lists edited one item per line) and escher's preview on the right,
+  re-rendered off the Tk thread after every save into `figures/` under the out folder, scaled to
+  fit, with the OCR verdict and the layout-issue count under it and Open in VS Code on the
+  `.drawio` when `code` is on the PATH. The **Export… dialog**: the destination folder (remembered
+  in the preferences, the last one used), the three formats with **Select all** / **Select none**,
+  `drawio` and `png` checked by default, the OCR gate on by default, a preview of the file names;
+  its work is the `cs export` verb on a worker thread, so an agent gets the same `Result`, and the
+  status bar names every file written and the OCR verdict. The Dashboard tile opens the screen;
+  `/screen {"show": "control_structures"}` selects it. See [Control structures](#control-structures).
+- **Shared feedback is not a warning**: a signal carried by two edges that leave the same controller
+  (one feedback to two receivers; the owner's structure has two such) is legitimate, listed by
+  `cs validate` under `info`; a duplicate id on edges from different controllers stays a warning
+  when a file is loaded whole and a refusal when typed.
+- `gui/background.py` (`BackgroundFetch`) and `MainWindow.execute_quiet`: the family's pattern for
+  work that takes seconds (asi_kletz's Jira fetches), off the Tk thread, polled with `after`. The
+  `cs.exported` event refreshes no screen, as `jira.live` does not: no row changed.
+- The screen changes no table (schema version 4 is the STPA step objects', above). `uv.lock`
+  takes asi_escher 0.2.1.
 
 ## What is in 0.9.0
 
@@ -632,7 +658,8 @@ feedback up between them. Since 0.9.0 Dewey holds control structures as rows
 (docs/control-structure-plan.md, phase 2), builds them through a factory, and draws them with
 [asi_escher](../asi_escher) 0.2.0's `control_structure` kind. Dewey never draws anything itself:
 "all image stuff is handled through escher", and every export runs escher's OCR gate on the PNG
-"so that the final diagrams are competent". The screen is phase 3 (0.10.0).
+"so that the final diagrams are competent". Since 0.10.0 the window has a screen for them,
+**Control structures**, described after the verbs.
 
 **Entities** (schema version 3). One `control_structure` (name, slug, system, description, source,
 status Draft / Reviewed / Baselined, revision) holds everything; every part names its structure by
@@ -653,7 +680,9 @@ per line, carried as JSON text in the workbook. The service rules hold on every 
 row: a part names a structure and a parent that exist; a controller's key (from its name when not
 given) and an edge's key (the next free `eN`) are unique within the structure; a signal's kind
 defaults to its edge's and must match it; a signal id is unique within the structure (a refusal
-when typed, a warning when a file is loaded whole, repeated by `cs validate`); a control action
+when typed, a warning when a file is loaded whole, repeated by `cs validate`), except on two edges
+that leave the same controller, one feedback to two receivers, which `cs validate` lists as `info`
+(the owner's structure has two such); a control action
 pointing up the hierarchy (by the controllers' `order`) or feedback pointing down is a warning,
 never a refusal; a structure with parts, a controller with dependants or an edge with signals is
 deleted with `--cascade` or not at all (the generic `delete` takes `--cascade` too); a note
@@ -710,6 +739,35 @@ OCR engine and checks every box title, algorithm code, process-model title and s
 engine, as on CI; never a failure), `ocr skipped` (`--no-ocr`) or `no png written`. Every issue is
 repeated as a warning; the export is audited as `cs.export` and published as `cs.exported`.
 Without `--out` the files go to `control_structures/` under the out folder.
+
+**The screen** (0.10.0, `gui/control_structure_screen.py`, navigation entry **Control
+structures**, the Dashboard's CS STRUCTURES tile, `/screen {"show": "control_structures"}`). Left,
+the structures, one row each with its system, status, revision and the six counts, and New from…
+(a small dialog listing the factory's builders with their availability and the options each takes:
+name, system, a file or folder for `from_drawio` / `from_datasets`, a source structure for `clone`),
+Duplicate, Delete (asks, then cascades), Import draw.io…, Validate (the errors, warnings and info in
+the status bar and the Validation panel under the list) and Export…. Middle, the selected
+structure's parts as a stacked tree, the `stack()` idea of the Safety Plan with unique iids (a
+controller row; under it its algorithms, its process-model entries and the arrows that leave it with
+their signals; the notes at the end), a search box that keeps the lines opening a match's groups, and
+a form for the selected row (controller / algorithm / process-model entry / edge / signal / note; the
+keys of controllers and edges offered in a list; lists edited one item per line) with Save, New child
+(the kind depends on the selection: under a controller an algorithm, an entry, an edge it sends or a
+note beside it; under an edge a signal) and Delete. Right, the preview: escher's PNG of the
+structure, rendered off the Tk thread when a structure is selected and after every save into
+`figures/` under the out folder (with its `.drawio`), scaled to fit, the OCR verdict and the
+layout-issue count under it, Re-render, and Open in VS Code on the `.drawio` when `code` is on the
+PATH. Every button calls a verb through the window; the two things that take seconds, `cs export`
+and the preview's render, run on a worker thread (`gui/background.py`, `BackgroundFetch`) and the
+Tk thread only polls.
+
+**The Export… dialog**: the destination folder (remembered in the preferences as `cs_export_dir`,
+the last one used; `control_structures/` under the out folder the first time), the three format
+check boxes (`drawio`, `png`, `svg`) with **Select all** and **Select none**, `drawio` and `png`
+checked by default, an OCR check box (on by default), a preview of the file names, Export. The work
+is the `cs export` verb, so an agent gets the same `Result` from `/execute`; the dialog says
+"Exporting…" meanwhile, then names every file written and the OCR verdict, as the status bar does
+(`Exported <name>: <files> (OCR: competent)`), with Open in VS Code on the written `.drawio`.
 
 **The real structure is private.** The owner's wheel loader master structure lives in
 asi_standards `control-structures/wheel-loader/` (the draw.io source, the parser, the six
@@ -849,8 +907,9 @@ src/asi_dewey/
   generate/           DiagramFactory, DocumentFactory, Spec/Param, the diagram and document catalogs, figures.py
   automation/         CLI (with forwarding), EventBus (seq), script runner, server.py (the loopback automation
                       server a window owns) and session.py (the session file the CLI reads to find it)
-  gui/                tkinter: MainWindow, ScreenFactory, WidgetFactory, entity/dashboard/transfer/generate screens,
-                      stpa_screen.py, theme.py (ThemeFactory, GridTheme) and palettes.py (the family palette)
+  gui/                tkinter: MainWindow, ScreenFactory, WidgetFactory, the entity, dashboard, control-structure,
+                      STPA-analyses, transfer and generate screens, background.py (BackgroundFetch: work off the
+                      Tk thread), theme.py (ThemeFactory, GridTheme) and palettes.py (the family palette)
 tests/                pytest suite (schema, core, transfer, generate, jira, locks, CLI, GUI, theme, server, session,
                       control structures, STPA); fixtures/dewey-0.7.4.db, dewey-0.8.4.db and dewey-0.9.0.db, small
                       databases of those versions for the migration tests; fixtures/conveyor-gate-stpa.md, the
@@ -878,7 +937,8 @@ make their requests from a helper thread while pumping `window.update()`.
 The files, one per layer: `test_schema.py`, `test_core.py`, `test_transfer.py`, `test_generate.py`,
 `test_jira.py` (asi_hopper's replay fixtures; skipped when the sibling is not checked out),
 `test_locks.py`, `test_cli.py`, `test_gui.py`, `test_theme.py`, `test_server.py`, `test_session.py`,
-`test_control_structures.py` and `test_stpa.py`; `conftest.py` holds the isolation fixture and the
+`test_control_structures.py`, `test_control_structure_screen.py` and `test_stpa.py`; `conftest.py`
+holds the isolation fixture and the
 `brain`, `seeded` and `hold` fixtures. `test_core.py` opens a copy of `tests/fixtures/dewey-0.7.4.db`
 (never the file itself) to check that a 0.7.x database opens as 0.8.0 with every row stamped and
 nothing else changed; `test_control_structures.py` does the same with `dewey-0.8.4.db` for the seven
@@ -892,6 +952,10 @@ on CI without the engine; one test runs the real engine on the synthetic structu
 where the engine is absent; one local-only test loads the private datasets when they are beside the
 repo and asserts counts and files, never text. `$ASI_DEWEY_CONTROL_STRUCTURES` is pointed at an
 absent folder for every test, so no test finds the private shelf by accident.
+`test_control_structure_screen.py` drives the Control structures screen with the window withdrawn:
+escher's `build` is monkeypatched to write stub files with a competent OCR report, and the two
+background fetches (the preview and the export) are pumped with `window.update()` until their poll
+applies the Result; one test exports through the real escher (no OCR) and imports the file back.
 
 ## Adding an entity
 

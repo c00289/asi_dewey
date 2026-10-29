@@ -24,6 +24,11 @@ Dewey owns the links and the notes. Schema version 3 to 4. The plan foresaw this
 went to the control structures the same day, and the control-structure screen (phase 3 of
 docs/control-structure-plan.md) shares 0.10.0 with it.
 
+Control structures, phase 3 of docs/control-structure-plan.md: the screen. The owner, 2026-10-29:
+"a screen that is used as a CRUD for STPA control structures… the user can export them to their
+folder of preference… there must be Select all / Select none buttons, the default must be drawio
+png". The screen changes no table: schema version 4 is the step objects' above.
+
 ### Added
 - **Six entities** (`schema/definitions.py`): `stpa_analysis` (name, slug, system, status Draft / Reviewed /
   Baselined, `control_structure`, `source_kind` confluence / hand, `source_page_id`, `source_url`,
@@ -94,6 +99,39 @@ docs/control-structure-plan.md) shares 0.10.0 with it.
   beside the database; `$ASI_DEWEY_EVIDENCE` overrides it); `status` reports it as `evidence_dir`.
 - `tests/fixtures/dewey-0.9.0.db`: a small 0.9.0 database for the migration test;
   `tests/fixtures/conveyor-gate-stpa.md`: the synthetic STPA page.
+- **The Control structures screen** (`gui/control_structure_screen.py`, navigation entry "Control
+  structures", `/screen {"show": "control_structures"}`, the Dashboard's CS STRUCTURES tile opens
+  it). Left, the structures (name, system, status, revision, the six counts) with New from… (a dialog
+  listing the factory's builders, their availability and the options each takes: name, system, a
+  file or folder picker for `from_drawio` / `from_datasets`, a source structure for `clone`),
+  Duplicate, Delete (asks, then `cascade`), Import draw.io… (the file keeps its name under the next
+  free slug, so the round trip imports beside its origin), Validate (errors, warnings and info in the
+  status bar and a panel under the list) and Export…. Middle, the selected structure's parts as a
+  stacked tree (`stack()`: a controller row, under it its algorithms, its process-model entries and
+  the arrows that leave it with their signals; the notes at the end; unique iids, a repeated group
+  suffixed `#2`), a search box keeping the lines that open a match's groups, and a form for the
+  selected row (controller / algorithm / process-model entry / edge / signal / note; the keys of
+  controllers and edges offered in a list; lists one item per line) with Save, New child (the kind
+  depending on the selection) and Delete. Right, the preview: escher's PNG of the structure rendered
+  off the Tk thread when a structure is selected and after every save into `figures/` under the out
+  folder (with its `.drawio`), scaled to fit (Pillow, which asi_escher brings), the OCR verdict and
+  the layout-issue count under it, Re-render, and Open in VS Code on the `.drawio` when `code` is on
+  the PATH. Every button calls a verb through the window.
+- **The Export… dialog**: the destination folder (remembered in the preferences as `cs_export_dir`,
+  the last one used), the three format check boxes with **Select all** and **Select none**, `drawio`
+  and `png` checked by default, an OCR check box (on by default), a preview of the file names,
+  Export. The work is the `cs export` verb on a worker thread ("Exporting…" meanwhile); the result
+  names every file in the status bar and the dialog with the OCR verdict, and Open in VS Code on the
+  written `.drawio`.
+- `gui/background.py`: `BackgroundFetch`, the family's pattern (asi_kletz's Jira fetches) for work
+  that takes seconds: one `window.execute_quiet(verb, ...)` or any callable on a daemon thread, polled
+  from the Tk thread with `after`, nobody joins it. `MainWindow.execute_quiet` (`Brain.execute` as
+  `gui` and nothing else) and `MainWindow.report` (what `run` says about a Result, for a fetch that
+  ran off the thread).
+- `ControlStructureFactory.build_files(diagram, out, name, formats, ocr=)`: the escher call alone, no
+  database, no audit, no event; `export` wraps it with the audit and the event, the preview calls it
+  with a diagram made on the Tk thread. `preview_dir()` is `figures/` under the out folder.
+- `cs validate` reports `info` beside `errors` and `warnings`.
 
 ### Changed
 - **Schema version 4.** A 0.9.x database opens with the six tables created, nothing altered, no row
@@ -101,6 +139,16 @@ docs/control-structure-plan.md) shares 0.10.0 with it.
 - `uv.lock` takes asi_dewey 0.10.0; asi_hopper stays 0.1.9 (`sections`, `find_section`, `tables`,
   `strike`, `split_on_bold`, `links`, `PageSource`, `snapshot_pages`, the error classes: what the reader
   and the factory import; nothing from `asi_hopper.gateway`).
+- **Shared feedback is not a warning.** A signal carried by two edges that leave the same controller
+  (one feedback to two receivers; the owner's structure has FB-05 and FB-11 that way) is legitimate:
+  no warning when a file is loaded whole, no refusal when typed, `cs validate` lists it under `info`
+  ("signal FB-11 is shared by 2 edges from perception: e7, e10", the edges in their order). A
+  duplicate id on edges from different controllers stays a warning loaded and a refusal typed.
+- The Dashboard tile of an entity with a screen of its own (`TILE_SCREENS`) opens that screen; the
+  seven control-structure entities stay in `HIDDEN_ENTITY_SCREENS` (one screen, not seven tables).
+- The window refreshes no screen on `cs.exported` (no row changed), as on `jira.live`.
+- Version 0.10.0 in `pyproject.toml`, `version.py`, the README and `uv.lock`, which takes asi_escher 0.2.1
+  (peers on one tier, a wider canvas, UTF-8 in the OCR gate), what its checkout declares.
 
 ### Tests
 - 222 to 240. `test_stpa.py`: the reader on the synthetic page (2 losses, 5 hazards with a parent and a
@@ -118,6 +166,20 @@ docs/control-structure-plan.md) shares 0.10.0 with it.
   dump/load and the workbook round trip; the 0.9.0 migration; the screen (create, validate, export,
   refresh off the Tk thread, apply, delete). The existing tests count 22 entities and 22 sheets; the
   window tests check the entity screens and the two feature screens by name, not by a count.
+- 222 to 234. `test_control_structure_screen.py`, the window fixture: the screen registered, the
+  tile and `/screen`; `stack()` on the synthetic structure (34 lines, unique iids, a repeated key
+  suffixed, an orphan edge painted); the tree, the form filled by a selection, the search; Save and
+  New child through `update` / `create` as `gui`, a refusal as a status-bar error, the preview
+  re-rendered after a save; Delete asking first then cascading (an edge with its signals, a controller
+  with its algorithms, the structure with everything); New from… blank and clone, the template
+  listed unavailable, a blank name refused; Duplicate and Import draw.io… (the real escher writes the
+  file); Validate showing the warning, the info and an error; the Export… dialog's defaults (drawio
+  and png, OCR on), Select all / Select none, the file-name preview, Export calling `cs export` with
+  the chosen formats (escher's `build` monkeypatched to write stub files, the OCR report competent),
+  the status bar and the audit as `gui`, the folder remembered in the preferences, `--no-ocr` when the
+  box is off, a failed export reported; Open in VS Code. `test_control_structures.py`: a shared
+  signal from one controller loaded, typed and validated as info, a stranger still refused. The
+  navigation counts eleven screens.
 
 ## [0.9.0] - 2026-10-29
 
