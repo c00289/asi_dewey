@@ -11,10 +11,10 @@ absent), ``from_drawio``, ``from_datasets`` and ``clone``; ``register_builder`` 
 ``(title, entries)``, an entry rendered ``heading: variables; updated by ...``; an edge is a
 control action or feedback carrying its signal lines ``CA-01 Mission Data`` in order; a note is
 attached to its controller. Every entry is drawn behind a dash, which is how the reader tells
-one entry from the wrapped rest of the previous one when the file comes back. ``export`` hands
-that diagram to ``asi_escher.build`` with provenance
-and the OCR gate on, and answers with the files written, the OCR verdict and the layout issues;
-Dewey never draws anything itself.
+one entry from the wrapped rest of the previous one when the file comes back. ``build_files`` hands
+a diagram to ``asi_escher.build`` with provenance and the OCR gate on and answers with the files
+written, the OCR verdict and the layout issues; ``export`` wraps it with the audit and the event,
+the window's preview calls it alone. Dewey never draws anything itself.
 """
 
 from __future__ import annotations
@@ -39,6 +39,7 @@ TEMPLATE_FOLDER = Path("wheel-loader") / "datasets"  # under control_structures_
 TEMPLATE_NAME = "Wheel Loader Master Control Structure"
 TEMPLATE_SYSTEM = "Autonomous wheel loader"
 EXPORT_DIR = "control_structures"  # under Brain.out_dir when --out is not given
+PREVIEW_DIR = "figures"  # under Brain.out_dir: the window's preview, beside the documents' figures
 
 BuildFn = Callable[["Brain", dict[str, Any]], dict[str, Any]]
 AvailableFn = Callable[["Brain"], str | None]
@@ -211,35 +212,34 @@ class ControlStructureFactory:
         return d
 
     # -- the files ------------------------------------------------------
-    def export(
-        self, ref: Any, out_dir: str | Path | None = None, formats: tuple[str, ...] | None = None,
-        *, ocr: bool = True, actor: str = "python",
+    @staticmethod
+    def build_files(
+        diagram: Any, out_dir: str | Path, name: str, formats: tuple[str, ...] | None = None, *, ocr: bool = True,
     ) -> dict[str, Any]:
-        """Write ``<out>/<slug>.<fmt>`` for every format through ``asi_escher.build`` (provenance on,
-        the OCR gate on unless ``ocr=False``). Returns the paths, the OCR verdict and the issues;
-        audited as ``cs.export``, published as ``cs.exported``."""
+        """Write ``<out_dir>/<name>.<fmt>`` for every format through ``asi_escher.build`` (provenance on,
+        the OCR gate on the PNG unless ``ocr=False``) and return the plain-data form: ``formats``,
+        ``paths``, ``files``, ``primary``, ``size``, ``nodes``, ``edges``, ``issues``, ``layout_issues``,
+        ``ocr`` (escher's report as a dict, or None) and ``ocr_verdict``. No database, no audit, no
+        event: ``export`` adds those; the window's preview calls this alone, off the Tk thread, with a
+        diagram made on it."""
         from asi_escher import LayoutWarning, build
 
         formats = tuple(dict.fromkeys(formats or DEFAULT_FORMATS))
         unknown = [f for f in formats if f not in FORMATS]
         if unknown:
             raise CommandError(f"unknown format(s) {', '.join(unknown)}; choose from {', '.join(FORMATS)}")
-        row = self.brain.control_structures.resolve(ref)
-        out = Path(out_dir) if out_dir else Path(self.brain.out_dir) / EXPORT_DIR
-        diagram = self.to_diagram(row)
+        out = Path(out_dir)
         with _warnings.catch_warnings(record=True) as caught:
             _warnings.simplefilter("always", LayoutWarning)
-            built = build(
-                diagram, str(out), row["slug"], formats=formats, provenance=True, ocr=ocr and "png" in formats,
-            )
+            built = build(diagram, str(out), name, formats=formats, provenance=True, ocr=ocr and "png" in formats)
         for w in caught:
             if not issubclass(w.category, LayoutWarning):
                 _warnings.warn(w.message, w.category, stacklevel=2)
         issues = issues_to_dicts(built["issues"])
         report = built.get("ocr")
         paths = {fmt: str(built[fmt]) for fmt in formats}
-        data = {
-            "id": row["id"], "slug": row["slug"], "name": row["name"], "out": str(out),
+        return {
+            "out": str(out),
             "formats": list(formats), "paths": paths, "files": list(paths.values()),
             "primary": paths.get("png") or paths.get("drawio") or next(iter(paths.values())),
             "size": [int(built["size"][0]), int(built["size"][1])],
@@ -249,9 +249,27 @@ class ControlStructureFactory:
             "ocr": report.to_dict() if report is not None else None,
             "ocr_verdict": report.verdict if report is not None else ("ocr skipped" if not ocr else "no png written"),
         }
+
+    def export(
+        self, ref: Any, out_dir: str | Path | None = None, formats: tuple[str, ...] | None = None,
+        *, ocr: bool = True, actor: str = "python",
+    ) -> dict[str, Any]:
+        """Write ``<out>/<slug>.<fmt>`` for every format (``build_files``). Returns the paths, the OCR
+        verdict and the issues; audited as ``cs.export``, published as ``cs.exported``."""
+        row = self.brain.control_structures.resolve(ref)
+        out = Path(out_dir) if out_dir else Path(self.brain.out_dir) / EXPORT_DIR
+        data = {
+            "id": row["id"], "slug": row["slug"], "name": row["name"],
+            **self.build_files(self.to_diagram(row), out, row["slug"], formats, ocr=ocr),
+        }
+        paths = data["paths"]
         self.brain.storage.audit(actor, "cs.export", "control_structure", row["id"],
                                  {"slug": row["slug"], "paths": paths, "ocr_verdict": data["ocr_verdict"]})
         self.brain.events.publish(
             "cs.exported", structure=row["slug"], paths=paths, ocr_verdict=data["ocr_verdict"], actor=actor,
         )
         return data
+
+    def preview_dir(self) -> Path:
+        """Where the window's preview goes: ``figures/`` under the out folder, beside the documents' figures."""
+        return Path(self.brain.out_dir) / PREVIEW_DIR

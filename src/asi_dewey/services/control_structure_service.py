@@ -5,7 +5,8 @@ per entity, so they hold whichever verb writes the row (``create cs_signal`` as 
 factory): a part names a structure that exists and a parent that exists; a controller's key and
 an edge's key are unique within the structure; a signal's kind matches its edge's; a signal id
 is unique within the structure (a refusal when a person types it, a warning when a file is loaded
-whole, because the owner's structure carries a few duplicates it inherited); a control action
+whole, because the owner's structure carries a few duplicates it inherited), except that one signal on
+two edges leaving the same controller is one feedback to two receivers and legitimate; a control action
 pointing up the hierarchy or feedback pointing down is a warning, never a refusal (lateral stop
 paths exist); a row with dependants (a structure, a controller, an edge) is deleted with
 ``cascade`` or not at all. Every change publishes ``cs.changed`` with the structure's slug.
@@ -321,8 +322,13 @@ class CsSignalService(CsPartService):
             s for s in _rows(self.brain, "cs_signal", structure=row["structure"], signal_id=row.get("signal_id"))
             if stored is None or s["id"] != stored["id"]
         ]
-        if twins:
-            where = ", ".join(sorted({t["edge"] for t in twins}))
+        # the same signal on two edges leaving the same controller is one feedback (or one control action)
+        # to two receivers: legitimate, information at most (`cs validate` lists it under `info`); a twin
+        # on an edge from another source is a duplicate id, a warning in a file loaded whole, a refusal typed
+        edges_by_key = {e["key"]: e for e in _rows(self.brain, "cs_edge", structure=row["structure"])}
+        strangers = [t for t in twins if (edges_by_key.get(t["edge"]) or {}).get("source") != edge.get("source")]
+        if strangers:
+            where = ", ".join(sorted({t["edge"] for t in strangers}))
             message = f"signal_id: {row.get('signal_id')!r} is already carried by edge {where}"
             if self.brain.control_structures.bulk:
                 warnings.append(message)  # a file loaded whole keeps what it says; `cs validate` repeats it
@@ -469,8 +475,9 @@ class ControlStructureService:
 
     # -- validation -----------------------------------------------------
     def validate(self, ref: Any) -> dict[str, Any]:
-        """Every rule checked on the stored rows: errors (what the service would refuse) and warnings
-        (direction, duplicate signal ids, references to signals the structure does not carry)."""
+        """Every rule checked on the stored rows: errors (what the service would refuse), warnings
+        (direction, duplicate signal ids, references to signals the structure does not carry) and info
+        (a signal shared by two edges leaving the same controller, which is legitimate)."""
         row = self.resolve(ref)
         slug = row["slug"]
         parts = self.parts(slug)
@@ -503,6 +510,7 @@ class ControlStructureService:
                     errors.append(f"edge {e['key']}: {end} {e[end]!r} does not exist")
             if e["source"] in controllers and e["target"] in controllers:
                 warnings.extend(direction_warnings(e, controllers[e["source"]], controllers[e["target"]]))
+        info: list[str] = []
         carried: dict[str, list[str]] = {}
         for s in parts["signals"]:
             edge = edges.get(s["edge"])
@@ -516,7 +524,15 @@ class ControlStructureService:
             carried.setdefault(s["signal_id"], []).append(s["edge"])
         for sid, on in carried.items():
             if len(on) > 1:
-                warnings.append(f"signal {sid} is carried by {len(on)} edges: {', '.join(on)}")
+                on = sorted(on, key=lambda key: ((edges.get(key) or {}).get("order") or 0, key))
+                sources = {(edges.get(key) or {}).get("source") for key in on}
+                if len(sources) == 1 and None not in sources:
+                    # one signal to two receivers from the same controller (the owner's structure has two
+                    # such feedback signals): shared, not duplicated
+                    source = next(iter(sources))
+                    info.append(f"signal {sid} is shared by {len(on)} edges from {source}: {', '.join(on)}")
+                else:
+                    warnings.append(f"signal {sid} is carried by {len(on)} edges: {', '.join(on)}")
         for p in parts["process_model_entries"]:
             for field in ("control_actions", "updated_by"):
                 for sid in expand_refs(" ".join(str(x) for x in p.get(field) or [])):
@@ -530,5 +546,5 @@ class ControlStructureService:
         return {
             "id": row["id"], "slug": slug, "name": row["name"],
             "counts": {k: len(v) for k, v in parts.items()},
-            "ok": not errors, "errors": errors, "warnings": warnings,
+            "ok": not errors, "errors": errors, "warnings": warnings, "info": info,
         }
