@@ -11,6 +11,28 @@ All notable changes to ASI Dewey are recorded here. The format follows
 - Excel import diff preview; `fill` / `submit` / `cancel` puppeting of a screen's form; a
   `View > Automation` submenu or screen; date picker widget.
 
+## [0.11.2] - 2026-10-29
+
+The family's pass-two sweep of 2026-10-29: the one fix the sister tool has and this one lacked. Schema
+version unchanged (5).
+
+### Added
+- **`gui.log`, the window's trace** (`gui/trace.py`, `MainWindow.__init__` / `close`, `app.launch`): the
+  asi_kletz 0.18.1 fix, by convention, not shared code. The owner, 2026-10-29, on the sister tool: the window
+  "crashed for the first time", twice, and left nothing in the terminal either time; a window that ends must
+  say why. Beside the preferences file (`%LOCALAPPDATA%\asi\dewey\gui.log`; `$ASI_DEWEY_PREFS` moves both),
+  every start (pid, version, server on or off, the arguments), every `close()` with the three frames that
+  asked for it (Ctrl+Q, the close box, the automation server's `/quit`, or code), the main loop's return and
+  any exception escaping it; Python's `faulthandler` is enabled on the same file (all threads), so an access
+  violation or abort inside Tk leaves the Python stacks there. Rolls to `gui.log.1` above a megabyte. A folder
+  that cannot be written is skipped silently: the window opens regardless.
+- Tests: `tests/test_trace.py`, the sister tool's five (the log beside the preferences, the start and the
+  close with its caller, the main loop's return ending the trace, an escaping exception noted then raised, an
+  unwritable folder, the roll-over). 214 tests, 209 before.
+
+### Changed
+- `uv.lock` takes asi_dewey 0.11.2; asi_escher 0.2.2, asi_gutenberg 0.9.1 and asi_hopper 0.1.10 as before.
+
 ## [0.11.1] - 2026-10-29
 
 Broken-windows sweep after 0.11.0: what a removal of that size leaves behind, read and checked. No code
@@ -1079,7 +1101,8 @@ First alpha. Core only, no screens.
 - pytest suite covering schema coercion, CRUD, audit, events, transfer round trips, and the CLI.
 - README and this changelog.
 
-[Unreleased]: https://example.invalid/asi-dewey/compare/v0.11.1...HEAD
+[Unreleased]: https://example.invalid/asi-dewey/compare/v0.11.2...HEAD
+[0.11.2]: https://example.invalid/asi-dewey/compare/v0.11.1...v0.11.2
 [0.11.1]: https://example.invalid/asi-dewey/compare/v0.11.0...v0.11.1
 [0.11.0]: https://example.invalid/asi-dewey/compare/v0.10.1...v0.11.0
 [0.10.1]: https://example.invalid/asi-dewey/compare/v0.10.0...v0.10.1

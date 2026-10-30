@@ -23,10 +23,18 @@ def launch(brain: Brain, interactive: bool = True, theme: str | None = None, ser
     ``server=False`` opens the window without its local automation server (``--no-server``);
     ``ASI_DEWEY_AUTOMATION=off`` does the same for every launch.
     """
+    from . import trace
     from .main_window import MainWindow
 
     window = MainWindow(brain, interactive=interactive, theme=ThemeFactory.resolve(theme), server=server)
-    window.mainloop()
+    try:
+        window.mainloop()
+    except BaseException as exc:  # noqa: BLE001  (noted, then raised: the trace is the point)
+        trace.note("exception", kind=type(exc).__name__, text=exc)
+        raise
+    finally:
+        trace.note("mainloop returned", closed=window._closed)
+        trace.stop()
 
 
 def ask_retry(exc: PrimaryToolBusy) -> bool:

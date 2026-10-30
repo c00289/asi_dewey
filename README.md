@@ -3,12 +3,22 @@
 One of the [ASI FuSa tools](https://github.com/c00289/c00289/blob/main/README.md) by Roy Mendoza; the master README there lists every sibling.
 
 A functional-safety (FuSa) working-knowledge API for the Wheel Loader programme, with a
-command line and a tkinter desktop window on top. Version **0.11.1**, alpha. Named after
+command line and a tkinter desktop window on top. Version **0.11.2**, alpha. Named after
 Melvil Dewey: one classification scheme, many views.
 
 The idea, in one sentence: a database is the single source of truth, the Excel workbook
 is a generated *view* of it, and everything a human can do through a front end an AI agent
 can do through the same commands.
+
+## What is in 0.11.2
+
+**`gui.log`, the window's trace: the asi_kletz 0.18.1 fix, by convention, not shared code.** A window that
+ends says why: `gui.log` beside the preferences file (`%LOCALAPPDATA%\asi\dewey\gui.log`; `$ASI_DEWEY_PREFS`
+moves both) records every start (pid, version, server on or off), every close with the caller that asked for
+it (Ctrl+Q, the close box, the automation server's `/quit`, or code), the moment the main loop returns and any
+exception that escapes it; Python's `faulthandler` writes the stack of every thread there when Tk itself dies
+before the process does. The file rolls to `gui.log.1` above a megabyte. Paste its tail when a window ends
+and nothing else says why.
 
 ## What is in 0.11.1
 
@@ -750,9 +760,10 @@ src/asi_dewey/
   automation/         CLI (with forwarding), EventBus (seq), script runner, server.py (the loopback automation
                       server a window owns) and session.py (the session file the CLI reads to find it)
   gui/                tkinter: MainWindow, ScreenFactory, WidgetFactory, the entity, dashboard, transfer and generate
-                      screens, theme.py (ThemeFactory, GridTheme) and palettes.py (the family palette)
+                      screens, theme.py (ThemeFactory, GridTheme), palettes.py (the family palette) and
+                      trace.py (gui.log, the window's trace)
 tests/                pytest suite (schema, core, transfer, generate, jira, locks, CLI, GUI, theme, server, session,
-                      handover); fixtures/dewey-0.7.4.db, dewey-0.8.4.db and dewey-0.10.1.db, small synthetic
+                      handover, trace); fixtures/dewey-0.7.4.db, dewey-0.8.4.db and dewey-0.10.1.db, small synthetic
                       databases of those versions for the migration and handover tests
 ```
 
@@ -776,8 +787,8 @@ make their requests from a helper thread while pumping `window.update()`.
 
 The files, one per layer: `test_schema.py`, `test_core.py`, `test_transfer.py`, `test_generate.py`,
 `test_jira.py` (asi_hopper's replay fixtures; skipped when the sibling is not checked out),
-`test_locks.py`, `test_cli.py`, `test_gui.py`, `test_theme.py`, `test_server.py`, `test_session.py` and
-`test_handover.py`; `conftest.py` holds the isolation fixture and the `brain`, `seeded` and `hold`
+`test_locks.py`, `test_cli.py`, `test_gui.py`, `test_theme.py`, `test_server.py`, `test_session.py`,
+`test_handover.py` and `test_trace.py`; `conftest.py` holds the isolation fixture and the `brain`, `seeded` and `hold`
 fixtures. `test_core.py` opens a copy of `tests/fixtures/dewey-0.7.4.db` (never the file itself) to check
 that a 0.7.x database opens as 0.8.0 with every row stamped and nothing else changed, a copy of
 `dewey-0.8.4.db` to check that none of the thirteen tables of 0.9.0 to 0.10.1 is created any more, and a
