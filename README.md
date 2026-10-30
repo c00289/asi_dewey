@@ -3,12 +3,25 @@
 One of the [ASI FuSa tools](https://github.com/c00289/c00289/blob/main/README.md) by Roy Mendoza; the master README there lists every sibling.
 
 A functional-safety (FuSa) working-knowledge API for the Wheel Loader programme, with a
-command line and a tkinter desktop window on top. Version **0.11.2**, alpha. Named after
+command line and a tkinter desktop window on top. Version **0.11.3**, alpha. Named after
 Melvil Dewey: one classification scheme, many views.
 
 The idea, in one sentence: a database is the single source of truth, the Excel workbook
 is a generated *view* of it, and everything a human can do through a front end an AI agent
 can do through the same commands.
+
+## What is in 0.11.3
+
+**The launcher syncs first: the asi_kletz 0.27.3 fix, by convention, not shared code.** The owner, 2026-10-30, after a Kletz relaunch, that is, a relaunch that met "Virtual environment not found": "constant improvement...
+this should apply to dewey and kletz". An install made while the window was open half-applies (the window
+holds the environment's files), and the next launch found no launcher.
+`gui.ps1` now runs `uv sync --quiet` before it starts the window (when `uv` is on PATH), so a launch
+after a sibling's release or a half-applied install heals itself. The cause of those half-applied
+installs: the repos live under OneDrive, which holds a freshly written folder for a moment while it
+uploads it, and an install that lands in that moment fails with "Access is denied" on a `.dist-info`
+folder; so the sync is tried up to three times, two seconds apart. A sync that still cannot run is a
+warning, and the window starts on the environment as it is. No change
+to the package.
 
 ## What is in 0.11.2
 

@@ -11,6 +11,22 @@ All notable changes to ASI Dewey are recorded here. The format follows
 - Excel import diff preview; `fill` / `submit` / `cancel` puppeting of a screen's form; a
   `View > Automation` submenu or screen; date picker widget.
 
+## [0.11.3] - 2026-10-30
+
+The owner, 2026-10-30, after a relaunch that met "Virtual environment not found": "constant improvement...
+this should apply to dewey and kletz". An install made while the window was open half-applies (the window
+holds the environment's files), and the next launch found no launcher.
+The asi_kletz 0.27.3 fix, by convention, not shared code.
+
+### Changed
+- **`gui.ps1` syncs the environment before it starts the window** (`uv sync --quiet` when `uv` is on PATH),
+  so a launch after a sibling's release or a half-applied install heals itself. The repos live under
+  OneDrive, which holds a freshly written folder for a moment while it uploads it, and an install that
+  lands in that moment fails with "Access is denied" on a `.dist-info` folder, so the sync is tried up to
+  three times, two seconds apart. A sync that still cannot run is a warning, not a stop: the window starts
+  on the environment as it is. No change to the package.
+- README: *What is in 0.11.3*.
+
 ## [0.11.2] - 2026-10-29
 
 The family's pass-two sweep of 2026-10-29: the one fix the sister tool has and this one lacked. Schema
@@ -1101,7 +1117,8 @@ First alpha. Core only, no screens.
 - pytest suite covering schema coercion, CRUD, audit, events, transfer round trips, and the CLI.
 - README and this changelog.
 
-[Unreleased]: https://github.com/c00289/asi_dewey/compare/v0.11.2...HEAD
+[Unreleased]: https://github.com/c00289/asi_dewey/compare/v0.11.3...HEAD
+[0.11.3]: https://github.com/c00289/asi_dewey/compare/v0.11.2...v0.11.3
 [0.11.2]: https://github.com/c00289/asi_dewey/compare/v0.11.1...v0.11.2
 [0.11.1]: https://github.com/c00289/asi_dewey/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/c00289/asi_dewey/compare/v0.10.1...v0.11.0
