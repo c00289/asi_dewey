@@ -135,11 +135,6 @@ class ExcelExporter(Exporter):
                         cell.value = value
                         cell.hyperlink = value
                         cell.style = "Hyperlink"
-                    elif spec.type is FieldType.JSON:  # the list as its JSON text, so the sheet round-trips
-                        if not value:
-                            continue
-                        cell.value = json.dumps(list(value), ensure_ascii=False)
-                        cell.alignment = Alignment(wrap_text=True, vertical="top")
                     else:
                         cell.value = value
                         if spec.type is FieldType.MULTILINE:

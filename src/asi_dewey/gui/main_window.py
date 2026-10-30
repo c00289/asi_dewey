@@ -2,12 +2,9 @@
 
 The window never touches storage directly. Every change goes through ``run`` which calls
 ``Brain.execute`` with actor ``gui``; the event bus then refreshes whatever screen is open,
-so edits made by the CLI or an agent against the same Brain appear live too. Three events do not
+so edits made by the CLI or an agent against the same Brain appear live too. Two events do not
 refresh a screen: ``theme.changed`` repaints the window, and ``jira.live`` (a forwarded
-``jira live``) and ``cs.exported`` (files written) change no database row. Every verb runs on
-the Tk thread through ``run``, except what takes seconds: the Control structures screen runs
-``cs export`` and its preview through ``execute_quiet`` on a worker thread (``gui/background.py``)
-and reports on the Tk thread when its poll sees the Result.
+``jira live``) changes no database row. Every verb runs on the Tk thread through ``run``.
 
 The window owns the local automation server (``automation/server.py``): it starts it after the
 first screen is shown, writes the session file, shows the port in the online indicator, and stops
@@ -371,24 +368,10 @@ class MainWindow(tk.Tk):
         self.set_status(text.replace("\n", "  "))
 
     # -- commands -------------------------------------------------------
-    def execute_quiet(self, verb: str, **args: Any) -> Result:
-        """``Brain.execute`` as actor ``gui`` and nothing else: no status bar, no dialog, no widget.
-
-        The one window method a worker thread may call (``gui/background.py``): the Control
-        structures screen runs escher's export and the OCR gate here, off the Tk thread, and reports
-        on it when the poll sees the Result. Every other caller goes through ``run``.
-        """
-        return self.brain.execute(verb, args, actor="gui")
-
     def run(self, verb: str, **args: Any) -> Result:
-        """Execute as actor ``gui``; a failure is a status-bar line plus a dialog when interactive."""
-        result = self.report(self.execute_quiet(verb, **args), verb)
-        return result
-
-    def report(self, result: Result, verb: str | None = None) -> Result:
-        """What ``run`` says about a Result: a failure is a status-bar line plus a dialog when
-        interactive, warnings a status-bar line. A fetch that ran off the Tk thread reports here."""
-        verb = verb or result.verb or "command"
+        """Execute as actor ``gui``; a failure is a status-bar line plus a dialog when interactive,
+        warnings a status-bar line."""
+        result = self.brain.execute(verb, args, actor="gui")
         if not result.ok:
             self.notify_error(f"{verb} failed", "; ".join(result.errors) or "unknown error")
         elif result.warnings:
@@ -422,10 +405,8 @@ class MainWindow(tk.Tk):
                 else:
                     self.set_theme(key)
             return
-        if topic in ("jira.live", "cs.exported"):
-            # a forwarded `jira live` or a control-structure export: no database row changed, nothing
-            # to refresh (and an export may publish from the worker thread that ran it: no Tk call here)
-            return
+        if topic == "jira.live":
+            return  # a forwarded `jira live`: no database row changed, nothing to refresh
         if self._refresh_job is not None:
             return
         self._refresh_job = self.after(50, self._refresh_after_event)

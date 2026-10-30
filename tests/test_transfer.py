@@ -15,7 +15,7 @@ def test_json_dump_and_load_modes(seeded, tmp_path):
     dumped = seeded.execute("dump", out=str(out))
     assert dumped.ok and dumped.data["entities"]["fact"] == 2
     payload = json.loads(out.read_text(encoding="utf-8"))
-    assert payload["schema_version"] == 4 and set(payload["entities"]) >= {"fact", "task", "safety_plan_row"}
+    assert payload["schema_version"] == 5 and set(payload["entities"]) >= {"fact", "task", "safety_plan_row"}
 
     with Brain(tmp_path / "other.db") as other:
         loaded = other.execute("load", path=str(out), mode="replace")
@@ -48,8 +48,6 @@ def test_excel_export_and_reimport(seeded, tmp_path):
     wb = load_workbook(path)
     assert set(wb.sheetnames) == {
         "tasks", "facts", "WL functions", "WL use cases", "links", "JIRA", "QMS", "people", "Safety Plan",
-        "CS structures", "CS controllers", "CS algorithms", "CS process model", "CS edges", "CS signals", "CS notes",
-        "STPA analyses", "STPA losses", "STPA hazards", "STPA UCAs", "STPA scenarios", "STPA constraints",
     }
     ws = wb["Safety Plan"]
     headers = [c.value for c in ws[1]]

@@ -77,20 +77,6 @@ class MultilineWidget(FieldWidget):
         self.text.focus_set()
 
 
-class ListWidget(MultilineWidget):
-    """A ``JSON`` list edited one item per line (the lists of a control structure's process model)."""
-
-    def get(self) -> Any:
-        text = self.text.get("1.0", "end-1c")
-        return [line.strip() for line in text.splitlines() if line.strip()]
-
-    def set(self, value: Any) -> None:
-        self.text.delete("1.0", "end")
-        if value:
-            items = value if isinstance(value, (list, tuple)) else [value]
-            self.text.insert("1.0", "\n".join(str(item) for item in items))
-
-
 class BoolWidget(FieldWidget):
     def build(self) -> None:
         self.var = tk.BooleanVar(value=False)
@@ -171,7 +157,6 @@ class WidgetFactory:
         FieldType.DATE: DateWidget,
         FieldType.URL: UrlWidget,
         FieldType.ENUM: EnumWidget,
-        FieldType.JSON: ListWidget,
     }
 
     def __init__(self, lookups: LookupRegistry) -> None:

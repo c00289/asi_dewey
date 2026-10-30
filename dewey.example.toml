@@ -20,17 +20,9 @@ workbook = "dewey.xlsx"
 # Default: out/ next to the database.
 out = "out"
 
-# Folder where `asi-dewey stpa new from_confluence` and `stpa refresh` write their Hopper evidence bundles
-# (one folder per snapshot: manifest.json, pages.json, pages/<id>.md, hashed). Default: evidence/ next to the
-# database. $ASI_DEWEY_EVIDENCE overrides it.
-evidence_dir = "evidence"
-
-# Folder of control-structure datasets the factory's `template:wheel_loader_master` builder reads
-# (`cs new template:wheel_loader_master`): `<dir>/wheel-loader/datasets/` holds the six JSON files of
-# the owner's structure. Private (asi_standards); when absent the builder is listed as unavailable.
-# Default: ../asi_standards/control-structures beside the working directory. $ASI_DEWEY_CONTROL_STRUCTURES
-# overrides it.
-control_structures_dir = "../asi_standards/control-structures"
+# `evidence_dir` and `control_structures_dir` (0.9.0 to 0.10.1) are ignored since 0.11.0: the `cs` and `stpa`
+# verbs that read them are asi_kletz's (kletz.toml). `asi-dewey handover --out <dir>` is what carries STPA work
+# explored here over to Kletz.
 
 # JQL that `asi-dewey jira sync` pulls into the Jira Ticket table through asi_hopper (read only).
 # asi_hopper itself is configured by its own hopper.toml ($ASI_HOPPER_CONFIG); sign in once with

@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import datetime as dt
 import enum
-import json
 import re
 import uuid
 from collections.abc import Mapping, Sequence
@@ -51,7 +50,6 @@ class FieldType(enum.StrEnum):
     DATE = "date"
     URL = "url"
     ENUM = "enum"
-    JSON = "json"  # a JSON array in a text column, read back as a list (the lists of a control structure)
 
 
 SQL_TYPES: dict[FieldType, str] = {
@@ -62,7 +60,6 @@ SQL_TYPES: dict[FieldType, str] = {
     FieldType.DATE: "TEXT",
     FieldType.URL: "TEXT",
     FieldType.ENUM: "TEXT",
-    FieldType.JSON: "TEXT",
 }
 
 PY_TYPES: dict[FieldType, type] = {
@@ -73,7 +70,6 @@ PY_TYPES: dict[FieldType, type] = {
     FieldType.DATE: str,
     FieldType.URL: str,
     FieldType.ENUM: str,
-    FieldType.JSON: list,
 }
 
 
@@ -118,7 +114,7 @@ class FieldSpec:
     def default(self) -> Any:
         if self.is_flag:
             return False
-        return [] if self.type is FieldType.JSON else None
+        return None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -155,47 +151,12 @@ def normalize_text(value: str) -> str:
     return value.replace("\xa0", " ").strip()
 
 
-def coerce_list(name: str, value: Any) -> list[Any]:
-    """The canonical list of a ``JSON`` field: a list or tuple as it is (every item JSON-serialisable),
-    a string that is a JSON array parsed, any other string split one item per line (the way the
-    window edits a list), blank lines dropped; ``None`` or blank is the empty list."""
-    if value is None:
-        return []
-    if isinstance(value, (list, tuple)):
-        items = list(value)
-    elif isinstance(value, str):
-        text = normalize_text(value)
-        if not text:
-            return []
-        if text.startswith("["):
-            try:
-                items = json.loads(text)
-            except ValueError:
-                raise ValueError(f"{name}: {text[:40]!r} is not a JSON array") from None
-            if not isinstance(items, list):
-                raise ValueError(f"{name}: {text[:40]!r} is not a JSON array")
-        else:
-            items = [line.strip() for line in text.splitlines() if line.strip()]
-    else:
-        raise ValueError(f"{name}: {value!r} is not a list")
-    try:
-        json.dumps(items)
-    except (TypeError, ValueError):
-        raise ValueError(f"{name}: the list holds a value that is not JSON") from None
-    return items
-
-
 def coerce(
     spec: FieldSpec,
     value: Any,
     lookups: Mapping[str, Sequence[str]] | None = None,
 ) -> tuple[Any, str | None]:
     """Return ``(clean_value, warning_or_None)``; raise ``ValueError`` if uncoercible."""
-    if spec.type is FieldType.JSON:
-        items = coerce_list(spec.name, value)
-        if spec.required and not items:
-            raise ValueError(f"{spec.name}: a value is required")
-        return items, None
     if isinstance(value, str):
         value = normalize_text(value)
     if value is None or value == "":

@@ -15,8 +15,8 @@ from asi_dewey.errors import CommandError, NotFound
 from asi_dewey.generate import DiagramFactory, DocumentFactory, Param, Spec
 from asi_dewey.generate.figures import build_diagram
 
-DIAGRAMS = {"schema_map", "lifecycle_overview", "phase_flow", "task_flow", "stpa_trace"}
-DOCUMENTS = {"safety_plan", "status_report", "handbook", "stpa_report"}
+DIAGRAMS = {"schema_map", "lifecycle_overview", "phase_flow", "task_flow"}
+DOCUMENTS = {"safety_plan", "status_report", "handbook"}
 
 
 def fuller(brain: Brain) -> Brain:

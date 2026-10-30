@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
@@ -10,20 +9,6 @@ from ..errors import CommandError
 from ..schema import SYSTEM_FIELDS, UID_FIELD, EntitySchema, FieldType, coerce, normalise_uid
 from ..storage.base import Storage
 from ..storage.sqlite import now_iso, quote
-
-
-def decode_list(text: Any) -> list[Any]:
-    """The list behind a ``JSON`` column's text; a NULL is the empty list, and text that is not a
-    JSON array (never written by this tool) is kept as a one-item list rather than lost."""
-    if text is None or text == "":
-        return []
-    if isinstance(text, list):
-        return text
-    try:
-        value = json.loads(text)
-    except (TypeError, ValueError):
-        return [str(text)]
-    return value if isinstance(value, list) else [value]
 
 
 class SqlRepository:
@@ -39,8 +24,6 @@ class SqlRepository:
         spec = self.schema.field(name)
         if spec.type is FieldType.BOOL:
             return 1 if value else 0
-        if spec.type is FieldType.JSON:  # a JSON array in a text column
-            return json.dumps(list(value) if value is not None else [], ensure_ascii=False)
         return value
 
     def _decode(self, row: Mapping[str, Any]) -> dict[str, Any]:
@@ -48,8 +31,6 @@ class SqlRepository:
         for spec in self.schema.fields:
             if spec.type is FieldType.BOOL and spec.name in out:
                 out[spec.name] = bool(out[spec.name])
-            elif spec.type is FieldType.JSON and spec.name in out:
-                out[spec.name] = decode_list(out[spec.name])
         return out
 
     def _check_columns(self, names: Iterable[str]) -> None:
@@ -158,14 +139,6 @@ class SqlRepository:
 
     def delete_all(self) -> int:
         cur = self.storage.execute(f"DELETE FROM {self.table}")
-        return cur.rowcount
-
-    def delete_where(self, **filters: Any) -> int:
-        """Delete every row matching ``filters`` (a cascade); returns the count. No filter: nothing."""
-        if not filters:
-            return 0
-        where, params = self._where(filters)
-        cur = self.storage.execute(f"DELETE FROM {self.table}{where}", params)
         return cur.rowcount
 
     def bulk_insert(self, rows: Sequence[Mapping[str, Any]], keep_ids: bool = False) -> list[int]:

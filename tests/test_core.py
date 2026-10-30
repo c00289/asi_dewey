@@ -11,6 +11,8 @@ from asi_dewey.errors import CommandError, NotFound, ValidationError
 from asi_dewey.schema import UID_PATTERN, new_uid
 
 FIXTURE_0_7_4 = Path(__file__).parent / "fixtures" / "dewey-0.7.4.db"
+FIXTURE_0_8_4 = Path(__file__).parent / "fixtures" / "dewey-0.8.4.db"
+FIXTURE_0_10_1 = Path(__file__).parent / "fixtures" / "dewey-0.10.1.db"  # schema 4: the thirteen tables, with rows
 CS_TABLES = [
     "control_structures", "cs_controllers", "cs_algorithms", "cs_process_model_entries", "cs_edges", "cs_signals",
     "cs_notes",
@@ -79,7 +81,7 @@ def test_schema_and_status_commands(seeded):
     assert status["app_version"] == __version__
     assert status["entities"]["fact"] == 2 and "create" in status["commands"]
     full = seeded.execute("schema").data
-    assert len(full["entities"]) == 22 and "task_class" in full["lookups"] and full["commands"]
+    assert len(full["entities"]) == 9 and "task_class" in full["lookups"] and full["commands"]
     one = seeded.execute("schema", entity="jira").data
     assert one["name"] == "jira_ticket" and one["lookups"]["jira_status"]
 
@@ -210,10 +212,10 @@ def test_a_0_7_4_database_opens_as_0_8_0_with_every_row_identified(tmp_path):
     assert len(before["facts"]) == 2 and len(before["links"]) == 1 and len(before["qms_documents"]) == 1
     assert "uid" not in _columns(db, "facts") and len(before) == 9
     with Brain(db) as b:
-        # 0.9.0 adds the seven control-structure tables and 0.10.0 the six STPA tables (empty) beside the nine it alters
-        assert b.migration["created"] == CS_TABLES + STPA_TABLES
+        # 0.11.0 creates none of the thirteen tables of 0.9.0 to 0.10.1 (asi_kletz's now): the nine are altered
+        assert b.migration["created"] == []
         assert b.migration["uids_stamped"] == {"fact": 2, "link": 1, "qms_document": 1}
-        assert set(b.migration["altered"]) == {s.table for s in b.registry} - set(CS_TABLES) - set(STPA_TABLES)
+        assert set(b.migration["altered"]) == {s.table for s in b.registry}
         assert all(cols == ["uid"] for cols in b.migration["altered"].values())
         uids: dict[tuple[str, int], str] = {}
         for schema in b.registry:
@@ -233,8 +235,7 @@ def test_a_0_7_4_database_opens_as_0_8_0_with_every_row_identified(tmp_path):
         assert [m["app_version"] for m in migrations] == ["0.7.4", __version__]  # the fingerprint changed
     after = _rows_without_uid(db)
     assert {k: v for k, v in after.items() if k in before} == before  # nothing else changed, timestamps alike
-    new_tables = CS_TABLES + STPA_TABLES
-    assert {k for k, v in after.items() if k not in before} == set(new_tables) and not any(after[k] for k in new_tables)
+    assert set(after) == set(before)  # no table added
     # a second open stamps nothing and audits nothing
     with Brain(db) as b:
         assert b.migration["uids_stamped"] == {} and b.migration["altered"] == {}
@@ -242,3 +243,42 @@ def test_a_0_7_4_database_opens_as_0_8_0_with_every_row_identified(tmp_path):
             assert b.execute("get", entity=name, id=row_id).data["uid"] == uid
         assert len([a for a in b.storage.audit_tail(50) if a["action"] == "stamp_uids"]) == 3
         assert len(b.storage.fetchall("SELECT 1 FROM schema_migrations")) == 2
+
+
+def _versions(b: Brain) -> list[str]:
+    return [m["app_version"] for m in b.storage.fetchall("SELECT app_version FROM schema_migrations ORDER BY version")]
+
+
+def test_a_0_10_1_database_opens_as_0_11_0_with_the_thirteen_tables_kept(tmp_path):
+    """Schema 4 to 5: the control structures and the STPA analyses are asi_kletz's, so their tables leave
+    the registry; they are neither dropped nor touched, so nothing is lost before `handover` has run."""
+    db = tmp_path / "dewey.db"
+    shutil.copy(FIXTURE_0_10_1, db)
+    before = _rows_without_uid(db)
+    assert set(CS_TABLES + STPA_TABLES) <= set(before) and len(before) == 22
+    assert len(before["cs_controllers"]) == 11 and len(before["stpa_ucas"]) == 8 and len(before["facts"]) == 2
+    with Brain(db) as b:
+        assert b.migration["created"] == [] and b.migration["altered"] == {} and b.migration["uids_stamped"] == {}
+        assert len(b.registry) == 9 and b.status()["schema_version"] == 5 and len(b.status()["entities"]) == 9
+        assert _versions(b) == ["0.9.0", "0.10.1", __version__]  # the fingerprint changed: one migration row
+        with pytest.raises(NotFound):
+            b.registry.get("control_structure")
+        assert not b.execute("list", entity="stpa_uca").ok and not b.execute("cs", action="list").ok
+        assert b.execute("list", entity="fact").data[0]["name"] == "Project code"
+        assert b.execute("handover", out=str(tmp_path / "hand")).data["counts"]["stpa_uca"] == 8
+    assert _rows_without_uid(db) == before  # every table as it was, the thirteen included
+    with Brain(db) as b:
+        assert b.migration["created"] == [] and len(_versions(b)) == 3
+
+
+def test_a_0_8_4_database_opens_as_0_11_0_without_the_thirteen_tables(tmp_path):
+    db = tmp_path / "dewey.db"
+    shutil.copy(FIXTURE_0_8_4, db)
+    before = _rows_without_uid(db)
+    assert "control_structures" not in before and len(before) == 9
+    with Brain(db) as b:
+        assert b.migration["created"] == [] and b.migration["altered"] == {} and b.migration["uids_stamped"] == {}
+        assert _versions(b) == ["0.8.4"]  # the same nine entities as 0.8.4: the same fingerprint, no migration row
+        refused = b.execute("handover", out=str(tmp_path / "hand"))
+        assert not refused.ok and refused.errors[0].startswith("nothing to hand over")
+    assert _rows_without_uid(db) == before
