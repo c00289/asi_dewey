@@ -11,6 +11,30 @@ All notable changes to ASI Dewey are recorded here. The format follows
 - Excel import diff preview; `fill` / `submit` / `cancel` puppeting of a screen's form; a
   `View > Automation` submenu or screen; date picker widget.
 
+## [0.11.1] - 2026-10-29
+
+Broken-windows sweep after 0.11.0: what a removal of that size leaves behind, read and checked. No code
+change; `ruff` and the 209 tests green before and after.
+
+### Fixed
+- The compare links at the foot of this file stopped at 0.8.4: 0.9.0, 0.10.0, 0.10.1, 0.11.0 and 0.11.1
+  are linked and `[Unreleased]` compares from v0.11.1.
+
+### Changed
+- The sweep, recorded: every `cs_`, `stpa`, `control_structure`, `BackgroundFetch`, `execute_quiet`,
+  `ListWidget`, `FieldType.JSON`, `coerce_list`, `decode_list`, `delete_where`, `evidence_dir`,
+  `control_structures_dir`, `UNTILED` and `TILE_SCREENS` left in `src`, `tests`, `docs`, the README, this
+  file, `dewey.example.toml` and the workflow is the handover module (its own `decode_list`, the JSON
+  column's text read back for the files, is not the `schema/fields.py` one 0.11.0 removed), released
+  history kept with its "moved to asi_kletz 0.24.0" note, or the `HIDDEN_ENTITY_SCREENS` rule that stays.
+  The README's Layout tree, test list, nine entities, ten screens and nine Dashboard tiles match the code;
+  `docs/control-structure-plan.md` points at a file that exists; the handover's Kletz command lines
+  (`load <json> --mode merge`, `cs new from_datasets --from <folder>`, `stpa new from_bundle --from
+  <folder>`) were checked against asi_kletz 0.24.1, where they are unchanged since 0.24.0. The
+  `__pycache__` files of the removed modules, never tracked, are gone from the checkout.
+- README: "What is in 0.11.1". `uv.lock` takes asi_dewey 0.11.1 and follows asi_gutenberg to 0.9.1 (the
+  sibling's own sweep of the same day); asi_escher 0.2.2 and asi_hopper 0.1.10 as before.
+
 ## [0.11.0] - 2026-10-29
 
 The STPA parts leave for Kletz. The owner, 2026-10-29: "control structures were supposed to go into Kletz
@@ -1055,7 +1079,12 @@ First alpha. Core only, no screens.
 - pytest suite covering schema coercion, CRUD, audit, events, transfer round trips, and the CLI.
 - README and this changelog.
 
-[Unreleased]: https://example.invalid/asi-dewey/compare/v0.8.4...HEAD
+[Unreleased]: https://example.invalid/asi-dewey/compare/v0.11.1...HEAD
+[0.11.1]: https://example.invalid/asi-dewey/compare/v0.11.0...v0.11.1
+[0.11.0]: https://example.invalid/asi-dewey/compare/v0.10.1...v0.11.0
+[0.10.1]: https://example.invalid/asi-dewey/compare/v0.10.0...v0.10.1
+[0.10.0]: https://example.invalid/asi-dewey/compare/v0.9.0...v0.10.0
+[0.9.0]: https://example.invalid/asi-dewey/compare/v0.8.4...v0.9.0
 [0.8.4]: https://example.invalid/asi-dewey/compare/v0.8.3...v0.8.4
 [0.8.3]: https://example.invalid/asi-dewey/compare/v0.8.2...v0.8.3
 [0.8.2]: https://example.invalid/asi-dewey/compare/v0.8.1...v0.8.2

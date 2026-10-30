@@ -30,7 +30,7 @@ wheels = [
 
 [[package]]
 name = "asi-dewey"
-version = "0.11.0"
+version = "0.11.1"
 source = { editable = "." }
 dependencies = [
     { name = "asi-escher" },
@@ -82,7 +82,7 @@ dev = [
 
 [[package]]
 name = "asi-gutenberg"
-version = "0.9.0"
+version = "0.9.1"
 source = { editable = "../asi_gutenberg" }
 dependencies = [
     { name = "asi-escher" },

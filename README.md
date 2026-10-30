@@ -3,12 +3,26 @@
 One of the [ASI FuSa tools](https://github.com/c00289/c00289/blob/main/README.md) by Roy Mendoza; the master README there lists every sibling.
 
 A functional-safety (FuSa) working-knowledge API for the Wheel Loader programme, with a
-command line and a tkinter desktop window on top. Version **0.11.0**, alpha. Named after
+command line and a tkinter desktop window on top. Version **0.11.1**, alpha. Named after
 Melvil Dewey: one classification scheme, many views.
 
 The idea, in one sentence: a database is the single source of truth, the Excel workbook
 is a generated *view* of it, and everything a human can do through a front end an AI agent
 can do through the same commands.
+
+## What is in 0.11.1
+
+**A broken-windows sweep after the 0.11.0 removal, no code change.** Every mention of what left for Kletz
+(`cs_`, `stpa`, `control_structure`, `BackgroundFetch`, `execute_quiet`, `ListWidget`, `FieldType.JSON`,
+`coerce_list`, `decode_list`, `delete_where`, `evidence_dir`, `control_structures_dir`, `UNTILED`,
+`TILE_SCREENS`) in `src`, `tests`, `docs`, this README, the CHANGELOG, `dewey.example.toml` and the
+workflow was read: each is the handover module (whose own `decode_list` reads a JSON column's text back
+for the files), released history kept with its "moved to asi_kletz 0.24.0" note, or the
+`HIDDEN_ENTITY_SCREENS` rule that stays. The Layout tree, the test list, the nine entities, the ten
+screens and the Dashboard's nine tiles were checked against the code; `docs/control-structure-plan.md`
+points at a file that exists; the handover's Kletz command lines were checked against asi_kletz 0.24.1
+(unchanged since 0.24.0). The one thing found: the CHANGELOG's compare links stopped at 0.8.4; they now
+run through 0.11.1.
 
 ## What is in 0.11.0
 
