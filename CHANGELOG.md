@@ -11,6 +11,68 @@ All notable changes to ASI Dewey are recorded here. The format follows
 - Excel import diff preview; `fill` / `submit` / `cancel` puppeting of a screen's form; a
   `View > Automation` submenu or screen; date picker widget.
 
+## [0.11.0] - 2026-10-29
+
+The STPA parts leave for Kletz. The owner, 2026-10-29: "control structures were supposed to go into Kletz
+and not Dewey"; asked where STPA should live: "move everything to Kletz"; and the family rule: "Dewey is
+more for experimental and day to day; all true work products will end up in Kletz once sanitized." asi_kletz
+0.24.0 holds the control structures and the STPA step objects with the same `cs` and `stpa` verbs (its README,
+"What is in 0.24.0", and its `docs/control-structure-plan.md` are canonical); Dewey loses both and keeps the
+way over. Schema version 4 to 5: no table dropped, the thirteen left unregistered.
+
+### Removed
+- The seven control-structure entities of 0.9.0 (`control_structure`, `cs_controller`, `cs_algorithm`,
+  `cs_process_model_entry`, `cs_edge`, `cs_signal`, `cs_note`) and the six STPA entities of 0.10.0
+  (`stpa_analysis`, `stpa_loss`, `stpa_hazard`, `stpa_uca`, `stpa_scenario`, `stpa_constraint`) with their
+  lookups; `services/control_structure_service.py` and `services/stpa_service.py` (the rules, the
+  structure-level and analysis-level operations); the `stpa/` package (the two factories, the draw.io
+  reader, the Confluence reader); the `cs` and `stpa` verbs; the Control structures and STPA analyses
+  screens, `gui/background.py` (`BackgroundFetch`) and `MainWindow.execute_quiet` / `report` (folded back
+  into `run`), the Dashboard's untiled parts and the structure tile's own screen; the `stpa_report`
+  document and the `stpa_trace` diagram; `evidence_dir` and `control_structures_dir` in `dewey.toml`,
+  `$ASI_DEWEY_EVIDENCE` and `$ASI_DEWEY_CONTROL_STRUCTURES`, the two keys in `status`;
+  `Brain.control_structures`, `Brain.stpa`, `Brain.factory`, `Brain.stpa_factory`; the `EntityService`
+  hooks (`check`, `before_delete`, `after_change`), its `brain` argument, `service_class` and
+  `delete --cascade`; `FieldType.JSON`, `coerce_list`, `decode_list`, `ListWidget` and
+  `SqlRepository.delete_where`, which nothing else used; `tests/test_control_structures.py`,
+  `test_control_structure_screen.py` and `test_stpa.py` with the fixtures `conveyor-gate-stpa.md`,
+  `conveyor-gate-stpa-quirks.md` and `dewey-0.9.0.db` (the last one lives on inside `dewey-0.10.1.db`).
+  The README's "Control structures" and "STPA analyses" sections; `docs/control-structure-plan.md` is a
+  pointer to the Kletz copy, kept so links resolve.
+
+### Added
+- `handover [--out <dir>]` (`handover.py`, `commands/handover.py`): the STPA work explored here written out
+  for asi_kletz 0.24.0, nothing deleted. The thirteen tables are read with plain SQL through their frozen
+  0.10.1 shape (`TABLES`) and written as `dewey-stpa.json` (the dump envelope Kletz's `load --mode merge`
+  reads: the thirteen entities parent-first, every row with its `uid` and without its `id`, lists as lists,
+  booleans as booleans), `control-structures/<slug>/` (the six files of the Roy's Brain envelope for
+  `cs new from_datasets`, plus `structure.json`), `bundles/<slug>/` (a copy of each evidence bundle still on
+  this machine, for `stpa new from_bundle`; a warning when it is not), `dewey-stpa.xlsx` (the thirteen
+  sheets, headed as the 0.10.1 workbook was) and `handover.json` (the manifest with the Kletz command
+  lines). Default folder `handover/` under the out folder. Audited as `handover`, published as
+  `handover.written`; a database with nothing to hand over is a failed Result. Rehearsed against asi_kletz
+  0.24.0 on the synthetic 0.10.1 database: `load` inserts 3 / 11 / 3 / 2 / 11 / 13 / 1 control-structure rows
+  and 1 / 2 / 5 / 8 / 10 / 6 STPA rows, the counts Dewey held, with UCA1's note, link and uid intact; a
+  second `load` updates and duplicates nothing; `cs new from_datasets` builds the eight-box structure with
+  the same counts and the one direction warning. The same files came out of 0.10.1's own `dump` first, which
+  is what proved the envelope before the entities went.
+- `tests/fixtures/dewey-0.10.1.db`, a synthetic schema-4 database built from `dewey-0.9.0.db` with 0.10.1
+  itself (three control structures, one analysis read from the synthetic conveyor-gate page and linked to
+  the gate structure, one note on UCA1; every name invented), `tests/test_handover.py` (the frozen shape,
+  the files, the bundle copy, the default folder, the refusal, the CLI, and the round trip into the sister
+  tool when `../asi_kletz/.venv` exists, skipped elsewhere) and two migration tests in `test_core.py`.
+
+### Changed
+- Schema version 4 to 5: the registry holds the nine entities of 0.8.x. A database of 0.9.0 to 0.10.1 opens
+  with the thirteen tables in place, unregistered and untouched (not shown, counted, dumped or exported;
+  `handover` reads them); a 0.8.4 database opens with nothing created and, holding the same nine entities,
+  keeps its fingerprint. `schema` and `status` list nine entities, the workbook has nine sheets, the Dashboard
+  tiles the nine, and `delete` takes no `--cascade`.
+- README: "What is in 0.11.0" (the owner's words, the family rule), "Handing STPA work to Kletz" in place of
+  the two removed sections, the 0.9.0 and 0.10.0 paragraphs kept as history with a one-line note each;
+  Configuration, Layout and Tests brought up to date. `dewey.example.toml` names the two ignored keys.
+- `uv.lock` takes asi_dewey 0.11.0.
+
 ## [0.10.1] - 2026-10-29
 
 The reader meets the real page. The acceptance run of Phase D (`stpa new from_bundle` on the owner's

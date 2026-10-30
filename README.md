@@ -3,14 +3,45 @@
 One of the [ASI FuSa tools](https://github.com/c00289/c00289/blob/main/README.md) by Roy Mendoza; the master README there lists every sibling.
 
 A functional-safety (FuSa) working-knowledge API for the Wheel Loader programme, with a
-command line and a tkinter desktop window on top. Version **0.10.1**, alpha. Named after
+command line and a tkinter desktop window on top. Version **0.11.0**, alpha. Named after
 Melvil Dewey: one classification scheme, many views.
 
 The idea, in one sentence: a database is the single source of truth, the Excel workbook
 is a generated *view* of it, and everything a human can do through a front end an AI agent
 can do through the same commands.
 
+## What is in 0.11.0
+
+**The STPA parts leave for Kletz; `handover` stays.** The owner, 2026-10-29: "control structures were
+supposed to go into Kletz and not Dewey"; asked where STPA should live: "move everything to Kletz"; and
+the rule for the family: "Dewey is more for experimental and day to day; all true work products will end
+up in Kletz once sanitized." The seven control-structure entities of 0.9.0 and the six STPA entities of
+0.10.0 are [asi_kletz](../asi_kletz) 0.24.0's now (its README, "What is in 0.24.0", and its
+`docs/control-structure-plan.md` are canonical), so Dewey drops them whole: the entities and their
+lookups, the rules, the two factories and readers, the `cs` and `stpa` verbs, the Control structures and
+STPA analyses screens and the Dashboard's tiles for them, the `stpa_report` document and the `stpa_trace`
+diagram, `evidence_dir` and `control_structures_dir` in `dewey.toml`, `FieldType.JSON`, `delete
+--cascade`, and the tests and fixtures that went with them. Nine entities remain, the nine of 0.8.x.
+
+- **Schema version 4 to 5, no table dropped.** A database of 0.9.0 to 0.10.1 opens with the thirteen
+  tables left in place, unregistered and untouched: no row is lost for anyone who has not handed over
+  yet. They are not shown, counted, dumped or exported any more; `handover` is what reads them.
+- **`handover --out <dir>`**, the one thing the family rule needs: what was explored here lands in Kletz.
+  It reads the thirteen tables through their 0.10.1 shape, frozen in `handover.py`, and writes the files
+  asi_kletz 0.24.0 reads, nothing deleted: `dewey-stpa.json` for `asi-kletz load --mode merge` (the
+  rows with their uids and without their ids, notes and links included), one datasets folder per
+  control structure in the Roy's Brain envelope for `asi-kletz cs new from_datasets`, a copy of every
+  evidence bundle still on this machine for `asi-kletz stpa new from_bundle`, the thirteen-sheet
+  workbook, and `handover.json` with the counts and the Kletz command lines. See
+  [Handing STPA work to Kletz](#handing-stpa-work-to-kletz).
+- The tests: `test_handover.py` on a synthetic 0.10.1 database (`tests/fixtures/dewey-0.10.1.db`), with
+  the round trip into the sister tool itself when it is checked out beside this repo; `test_core.py`
+  opens that database as 0.11.0 and checks that the thirteen tables are kept as they were.
+
 ## What is in 0.10.0
+
+*History: everything below moved to asi_kletz 0.24.0 and left Dewey in 0.11.0 (see above).*
+
 
 - **The STPA step objects, read from a Confluence page**, Phase D of
   asi_hopper/docs/confluence-integration-plan.md: six entities (schema version 4, a 0.9.x
@@ -31,7 +62,7 @@ can do through the same commands.
   `stpa_report` document and the `stpa_trace` diagram in the catalogs; an **STPA analyses** screen
   (the analyses, the parts as tabs, New from…, Validate, Link structure…, Export…, Delete, and
   **Refresh from Confluence** off the Tk thread, the report shown before it is applied). See
-  [STPA analyses](#stpa-analyses). Confluence stays the truth for the text; Dewey owns the links
+  [STPA analyses](../asi_kletz/README.md#stpa-analyses). Confluence stays the truth for the text; Dewey owns the links
   and the notes; nothing writes to Confluence.
 - `evidence_dir` in `dewey.toml` (`$ASI_DEWEY_EVIDENCE`; default `evidence/` beside the database):
   where the Confluence bundles go. `status` reports it.
@@ -52,7 +83,7 @@ can do through the same commands.
   `drawio` and `png` checked by default, the OCR gate on by default, a preview of the file names;
   its work is the `cs export` verb on a worker thread, so an agent gets the same `Result`, and the
   status bar names every file written and the OCR verdict. The Dashboard tile opens the screen;
-  `/screen {"show": "control_structures"}` selects it. See [Control structures](#control-structures).
+  `/screen {"show": "control_structures"}` selects it. See [Control structures](../asi_kletz/README.md#control-structures).
 - **Shared feedback is not a warning**: a signal carried by two edges that leave the same controller
   (one feedback to two receivers; the owner's structure has two such) is legitimate, listed by
   `cs validate` under `info`; a duplicate id on edges from different controllers stays a warning
@@ -65,6 +96,8 @@ can do through the same commands.
 
 ## What is in 0.9.0
 
+*History: the control structures moved to asi_kletz 0.24.0 and left Dewey in 0.11.0.*
+
 - **Control structures**, phase 2 of docs/control-structure-plan.md: seven entities (schema
   version 3, a 0.8.x database opens with the seven tables added and nothing else changed), the
   service rules, a factory with five builders (`blank`, `template:wheel_loader_master` from the
@@ -73,7 +106,7 @@ can do through the same commands.
   [--cascade]`, `validate`, `import`, `export --out <dir> [--format ...] [--all] [--no-ocr]`.
   The export goes through asi_escher 0.2.0 (`drawio` and `png` by default, `svg` too) with the
   OCR gate on, and the `Result` says whether the picture is competent. See
-  [Control structures](#control-structures). The screen is phase 3 (0.10.0); until then the
+  [Control structures](../asi_kletz/README.md#control-structures). The screen is phase 3 (0.10.0); until then the
   seven entities have no window of their own and the Dashboard tiles the structures only.
 - `FieldType.JSON`: a list in a text column, one item per line in a form, JSON text in a sheet.
 - `delete --cascade` on the generic verb, for a structure, a controller or an edge.
@@ -295,14 +328,10 @@ because it is specific to one machine; copy `dewey.example.toml` to start. Prece
 every path is the explicit argument (`--db`, `--out`), then the environment (`ASI_DEWEY_DB`,
 `ASI_DEWEY_WORKBOOK`, `ASI_DEWEY_OUT`), then `dewey.toml`, then `./dewey.db`, `dewey.xlsx`
 and `out/` next to the database. `status` reports all three as `database`, `workbook_path`
-and `out_dir`. A fourth path, `control_structures_dir` (default `../asi_standards/control-structures`,
-`$ASI_DEWEY_CONTROL_STRUCTURES` overrides it), is the private shelf the `template:wheel_loader_master`
-builder reads; see [Control structures](#control-structures). A fifth, `evidence_dir` (default `evidence/`
-next to the database, `$ASI_DEWEY_EVIDENCE` overrides it), is where `stpa new from_confluence` and
-`stpa refresh` write their Hopper bundles; see [STPA analyses](#stpa-analyses). Two more keys are plain settings, not
-paths: `jira_jql` (what `jira sync` caches) and `jira_live_jql` (what `jira live` fetches); see
-[Jira](#jira) and `dewey.example.toml`. `jira_live_autofetch` (0.7.3 to 0.8.0) is ignored since 0.8.1, with any
-other unknown key.
+and `out_dir`. Two more keys are plain settings, not paths: `jira_jql` (what `jira sync` caches) and
+`jira_live_jql` (what `jira live` fetches); see [Jira](#jira) and `dewey.example.toml`.
+`jira_live_autofetch` (0.7.3 to 0.8.0) is ignored since 0.8.1, and so are `evidence_dir` and
+`control_structures_dir` (0.9.0 to 0.10.1) since 0.11.0, with any other unknown key.
 
 ## Quick start
 
@@ -650,239 +679,41 @@ A document builder returns an `asi_gutenberg.Document` and adds catalog diagrams
 `asi_dewey.generate.figures.add_figure(doc, brain, "lifecycle_overview", caption=...)`, which
 attaches an Escher diagram block that Gutenberg renders into `figures/` beside the Markdown.
 
-## Control structures
+## Handing STPA work to Kletz
 
-STPA begins with a control structure: the controllers, what each is responsible for, the
-algorithms it runs, the process model it decides on, and the control actions down and the
-feedback up between them. Since 0.9.0 Dewey holds control structures as rows
-(docs/control-structure-plan.md, phase 2), builds them through a factory, and draws them with
-[asi_escher](../asi_escher) 0.2.0's `control_structure` kind. Dewey never draws anything itself:
-"all image stuff is handled through escher", and every export runs escher's OCR gate on the PNG
-"so that the final diagrams are competent". Since 0.10.0 the window has a screen for them,
-**Control structures**, described after the verbs.
-
-**Entities** (schema version 3). One `control_structure` (name, slug, system, description, source,
-status Draft / Reviewed / Baselined, revision) holds everything; every part names its structure by
-slug and its parent by key, so rows survive any export and import and a later STPA step can point at
-a controller by key and a signal by `CA-13`:
-
-| Entity | Sheet | Fields beyond `structure` and `order` |
-|---|---|---|
-| `cs_controller` | CS controllers | key, name, kind (controller, human_controller, controlled_process, environment, sensor, actuator, external_system), responsibility, process_model_title, note |
-| `cs_algorithm` | CS algorithms | controller, code (`V1`), name |
-| `cs_process_model_entry` | CS process model | controller, heading, control_actions, variables, updated_by, references (lists) |
-| `cs_edge` | CS edges | key (`e7`), kind (control_action, feedback), source, target (controller keys) |
-| `cs_signal` | CS signals | edge, signal_id (`CA-01`, `FB-12`), kind, name, placeholder |
-| `cs_note` | CS notes | text, attached_to (a controller key, or empty) |
-
-The lists are `FieldType.JSON`: a JSON array in a text column, read back as a list, edited one item
-per line, carried as JSON text in the workbook. The service rules hold on every verb that writes a
-row: a part names a structure and a parent that exist; a controller's key (from its name when not
-given) and an edge's key (the next free `eN`) are unique within the structure; a signal's kind
-defaults to its edge's and must match it; a signal id is unique within the structure (a refusal
-when typed, a warning when a file is loaded whole, repeated by `cs validate`), except on two edges
-that leave the same controller, one feedback to two receivers, which `cs validate` lists as `info`
-(the owner's structure has two such); a control action
-pointing up the hierarchy (by the controllers' `order`) or feedback pointing down is a warning,
-never a refusal; a structure with parts, a controller with dependants or an edge with signals is
-deleted with `--cascade` or not at all (the generic `delete` takes `--cascade` too); a note
-attached to a deleted controller stays, detached. Every change publishes `cs.changed` with the
-structure's slug; a dataset loaded whole publishes one.
-
-**The factory** (`asi_dewey.stpa.factory.ControlStructureFactory`, `brain.factory`) builds a
-structure from a plain dataset through the service, so every structure obeys the same rules
-whichever **builder** made it:
-
-| Builder | Reads | Options |
-|---|---|---|
-| `blank` | nothing | `--name`, `--system` |
-| `template:wheel_loader_master` | the owner's structure from `<control_structures_dir>/wheel-loader/datasets/` (private; listed as unavailable when absent) | `--name`, `--system` |
-| `from_drawio` | a draw.io file, escher's own or hand-drawn (`stpa/drawio_reader.py`, standard library only, the owner's parser ported) | `--from <file>` |
-| `from_datasets` | the six JSON files of a datasets folder (the Roy's Brain envelope) | `--from <folder>` |
-| `clone` | an existing structure | `--from <id-or-slug>`, `--name` |
-
-`to_diagram(structure)` is the one place that decides how rows become the drawing (a controller a
-box of its kind with its algorithms and its process model, an entry drawn as `- heading: variables;
-updated by ...`; an edge a control action or feedback carrying its signal lines `CA-01 Mission data`
-in order; a note attached to its controller), so an export and the window's preview can never
-disagree. The round trip holds: a file written by escher from `to_diagram` reads back to the same
-rows (keys, names, kinds, responsibilities, algorithms, process models, edges, signals, notes); only
-the controllers' `order` is the layout's, because the drawing ranks by hierarchy.
-
-**Verbs**:
+The family rule (the owner, 2026-10-29): "Dewey is more for experimental and day to day; all true work
+products will end up in Kletz once sanitized." The control structures and the STPA analyses Dewey held
+from 0.9.0 to 0.10.1 are [asi_kletz](../asi_kletz) 0.24.0's now (its `cs` and `stpa` verbs, its two
+screens; its README and its `docs/control-structure-plan.md` are canonical), and since 0.11.0 Dewey keeps
+neither the entities nor the verbs. What it keeps is the way over: a database of 0.9.0 to 0.10.1 still
+holds the thirteen tables (schema version 5 leaves them in place, unregistered; nothing is dropped), and
+`handover` writes them in the shapes Kletz reads.
 
 ```powershell
-asi-dewey cs list                                   # every structure with its counts
-asi-dewey cs get wheel_loader                       # one structure and all its parts (id, uid or slug)
-asi-dewey cs builders                               # the builders, available or not and why
-asi-dewey cs new blank --name "Demo loader" --system "Demo loader"
-asi-dewey cs new template:wheel_loader_master       # the owner's structure, from the private shelf
-asi-dewey cs new from_drawio --from structure.drawio --name "Imported"
-asi-dewey cs import structure.drawio                # from_drawio or from_datasets by what the path is
-asi-dewey cs duplicate wheel_loader --name "Wheel loader rev B" [--slug wl_b]
-asi-dewey cs validate wheel_loader                  # every rule on the stored rows: errors and warnings
-asi-dewey cs export wheel_loader --out exports      # <out>/wheel_loader.drawio and .png
-asi-dewey cs export wheel_loader --out exports --format svg --format drawio --no-ocr
-asi-dewey cs export wheel_loader --out exports --all
-asi-dewey cs delete wheel_loader --cascade
-asi-dewey create cs_signal --set structure=wheel_loader --set edge=e3 --set signal_id=CA-11 --set name="Pause"
+asi-dewey handover --out "C:\work\stpa-handover"      # default: handover/ under the out folder
 ```
 
-**Formats and the OCR verdict**. The format set is escher's (`drawio`, `png`, `svg`); the default
-is `drawio` and `png`, the file to edit (in draw.io or the VS Code draw.io extension, every box
-where escher put it) and the picture to look at. `export` calls `asi_escher.build` with
-`provenance=True` and, unless `--no-ocr`, `ocr=True`: escher reads the PNG back with the Windows
-OCR engine and checks every box title, algorithm code, process-model title and signal id. The
-`Result` carries `files`, `paths`, `primary`, `size`, `nodes`, `edges`, `issues`, `layout_issues`
-(the issues that are not OCR), `ocr` (escher's report: `verdict`, `competent`, `found`, `missing`,
-`line_count`) and `ocr_verdict`: `competent`, `unreadable: <labels>`, `ocr unavailable: <why>` (no
-engine, as on CI; never a failure), `ocr skipped` (`--no-ocr`) or `no png written`. Every issue is
-repeated as a warning; the export is audited as `cs.export` and published as `cs.exported`.
-Without `--out` the files go to `control_structures/` under the out folder.
+Nothing is deleted. The folder holds:
 
-**The screen** (0.10.0, `gui/control_structure_screen.py`, navigation entry **Control
-structures**, the Dashboard's CS STRUCTURES tile, `/screen {"show": "control_structures"}`). Left,
-the structures, one row each with its system, status, revision and the six counts, and New from…
-(a small dialog listing the factory's builders with their availability and the options each takes:
-name, system, a file or folder for `from_drawio` / `from_datasets`, a source structure for `clone`),
-Duplicate, Delete (asks, then cascades), Import draw.io…, Validate (the errors, warnings and info in
-the status bar and the Validation panel under the list) and Export…. Middle, the selected
-structure's parts as a stacked tree, the `stack()` idea of the Safety Plan with unique iids (a
-controller row; under it its algorithms, its process-model entries and the arrows that leave it with
-their signals; the notes at the end), a search box that keeps the lines opening a match's groups, and
-a form for the selected row (controller / algorithm / process-model entry / edge / signal / note; the
-keys of controllers and edges offered in a list; lists edited one item per line) with Save, New child
-(the kind depends on the selection: under a controller an algorithm, an entry, an edge it sends or a
-note beside it; under an edge a signal) and Delete. Right, the preview: escher's PNG of the
-structure, rendered off the Tk thread when a structure is selected and after every save into
-`figures/` under the out folder (with its `.drawio`), scaled to fit, the OCR verdict and the
-layout-issue count under it, Re-render, and Open in VS Code on the `.drawio` when `code` is on the
-PATH. Every button calls a verb through the window; the two things that take seconds, `cs export`
-and the preview's render, run on a worker thread (`gui/background.py`, `BackgroundFetch`) and the
-Tk thread only polls.
+| File | Read by | What it carries |
+| --- | --- | --- |
+| `dewey-stpa.json` | `asi-kletz load "<dir>\dewey-stpa.json" --mode merge` | The dump envelope (`{"entities": {...}}`) with the thirteen entities in parent-first order, every row with its `uid` and without its `id`: the rows arrive in Kletz as they were explored, notes, links (`cs_controller`, `cs_signal`) and citations included; a row handed over twice is updated by its uid; no id can collide with a row Kletz already has. The primary route. |
+| `control-structures/<slug>/` | `asi-kletz cs new from_datasets --from "<dir>\control-structures\<slug>" --name "..." --slug <slug> --system "..."` | The six JSON files of the Roy's Brain envelope (`controllers.json` ... `notes.json`, each `{"entity", "row_count", "rows"}` with the script's names on the rows) plus `structure.json` with the head. The route through Kletz's factory, where a duplicate signal id is a warning, not a refusal. |
+| `bundles/<slug>/` | `asi-kletz stpa new from_bundle --from "<dir>\bundles\<slug>" --name "..." --slug <slug>` | A copy of the Hopper evidence bundle an analysis was read from, when it is still on this machine (as recorded, or beside the database); when it is not, a warning names it. Kletz reads the page again from it; the notes and links typed here come through `dewey-stpa.json` only. |
+| `dewey-stpa.xlsx` | a person; `asi-kletz import excel` | The thirteen sheets headed as the 0.10.1 workbook headed them, the uid column last and hidden, lists as JSON text. |
+| `handover.json` | a person, an agent | The manifest: the database, the counts, the files, the structures and the analyses, the Kletz command lines above, the warnings. |
 
-**The Export… dialog**: the destination folder (remembered in the preferences as `cs_export_dir`,
-the last one used; `control_structures/` under the out folder the first time), the three format
-check boxes (`drawio`, `png`, `svg`) with **Select all** and **Select none**, `drawio` and `png`
-checked by default, an OCR check box (on by default), a preview of the file names, Export. The work
-is the `cs export` verb, so an agent gets the same `Result` from `/execute`; the dialog says
-"Exporting…" meanwhile, then names every file written and the OCR verdict, as the status bar does
-(`Exported <name>: <files> (OCR: competent)`), with Open in VS Code on the written `.drawio`.
+The `Result` carries the same: `counts`, `files`, `structures`, `analyses` and `kletz` (the command lines,
+`load` first). The handover is audited once as `handover` and published as `handover.written`. A
+database that never held the tables, or holds them empty, has nothing to hand over and the verb says so.
+Run Kletz after Dewey has closed (one primary tool at a time, see [One at a time](#one-at-a-time)); `load`
+expects a Kletz database that does not already hold a structure or an analysis under the same slug.
 
-**The real structure is private.** The owner's wheel loader master structure lives in
-asi_standards `control-structures/wheel-loader/` (the draw.io source, the parser, the six
-datasets, hashed) and in his database; `control_structures_dir` in `dewey.toml` (default
-`../asi_standards/control-structures`, `$ASI_DEWEY_CONTROL_STRUCTURES` overrides it) is where the
-template builder reads it. This repository holds none of it: the tests build a synthetic
-eight-box structure with invented names, and one local-only test on the private datasets asserts
-counts and files, never text, and is skipped where the shelf is absent.
-
-## STPA analyses
-
-The STPA pages on Confluence carry the later steps: the losses and hazards, the unsafe control
-actions in a context table, the loss scenarios and the safety constraints, each with a stable local
-code (`H2`, `UCA14`, `CSTR28`) that means something only within its page. Since 0.10.0 Dewey holds
-them as rows (asi_hopper/docs/confluence-integration-plan.md, Phase D), reads them from a page
-through [asi_hopper](../asi_hopper) 0.1.9's page anatomy, cites the page, version and section every
-object came from, and links the UCAs to a control structure. Confluence is read only, and stays the
-truth for the text; Dewey owns the links and the notes.
-
-**Entities** (schema version 4). One `stpa_analysis` (name, slug, system, status Draft / Reviewed /
-Baselined, `control_structure`, `source_kind` confluence / hand, `source_page_id`, `source_url`,
-`source_version`, `source_body_sha256`, `source_taken_at`, `source_bundle`, note) holds everything
-read from one page; every part names its analysis by slug, carries its `cite` and a `note`:
-
-| Entity | Sheet | Fields beyond `analysis`, `order`, `cite` and `note` |
-|---|---|---|
-| `stpa_loss` | STPA losses | code (`L1`), text |
-| `stpa_hazard` | STPA hazards | code (`H2`, `H4.3`), text, parent (the code before the last dot when listed), losses (list), retired |
-| `stpa_uca` | STPA UCAs | code (`UCA14`), controller, control_action, category (not_providing, providing, timing_order, duration), text, hazards (list), retired, duplicate_of, cs_controller, cs_signal |
-| `stpa_scenario` | STPA scenarios | row, uca, counterpart (`CA14`), types (1 to 4), causal_factors, beliefs, constraints (list), retired |
-| `stpa_constraint` | STPA constraints | code (`CSTR28`), text (empty when only referenced) |
-
-The rules hold on every verb that writes a row (`services/stpa_service.py`): a part names an
-analysis that exists; a code is unique within its analysis and immutable while other rows point at
-it; a hazard a UCA lists, a loss a hazard lists, a constraint or the UCA a scenario names must exist
-in the analysis as a **warning**, never a refusal (the pages cite `[H4]` where only `H4.3` to `H4.5`
-are listed, and a scenario row can have an empty UCA cell); a scenario type is 1 to 4; one analysis
-per (page id, version); the `source_*` of an analysis read from Confluence move only through
-`refresh`; an analysis with parts is deleted with `--cascade` or not at all. Every change publishes
-`stpa.changed`; a load and a refresh publish one.
-
-**The reader** (`stpa/confluence_reader.py`) is pure: it takes the Markdown body and the citation
-context and never sees raw Atlassian JSON. Losses and hazards are the `L1 - text` and `H2 - text`
-lines of the section whose heading contains "Losses and Hazards" (struck means retired); UCAs are
-the cells of the first table under "Context Table" (column 0 the controller, carried down when
-empty; column 1 the control action; columns 2 to 5 the four categories), each cell cut at its bold
-runs, the hazards read from `[H1, H2.1]`, a code inside `~~` retired, `(duplicate of **UCA7**)`
-the previous UCA's twin, a cell that is a link to another page a warning naming it; scenarios and
-constraints are the rows of the first table under "Loss Scenarios" (the UCA or its counterpart
-`CAn` at the start of the cell, the types from `Type (n)`, the `Belief:` runs, every `CSTRn` of the
-constraints cell with the text that follows it, the first row that spells a constraint out winning).
-The reader answers the dataset and its warnings; the factory loads it through the services.
-
-**The factory** (`asi_dewey.stpa.stpa_factory.StpaFactory`, `brain.stpa_factory`):
-
-| Builder | Reads | Options |
-|---|---|---|
-| `blank` | nothing | `--name`, `--system` |
-| `from_bundle` | a Hopper Confluence evidence bundle (`manifest.json`, `pages/<id>.md`); offline, hashed, replayable: **the primary builder** | `--from <folder>`, `--page <id>` when the bundle holds several, `--name` |
-| `from_confluence` | a snapshot of the page with its comments through `hopper.evidence.snapshot_pages` into `evidence_dir`, then `from_bundle`; needs an Atlassian session (`asi-hopper auth login`) | `--page <id>`, `--out <folder>`, `--name` |
-| `clone` | an existing analysis | `--from <id-or-slug>`, `--name` |
-
-**Verbs**:
-
-```powershell
-asi-dewey stpa list                                             # every analysis with its counts
-asi-dewey stpa builders
-asi-dewey stpa new from_bundle --from evidence/<bundle folder> --name "Locator"   # the acceptance form
-asi-dewey stpa new from_confluence --page 399343803 --name "Locator"             # snapshot, then read
-asi-dewey stpa get locator                                      # the analysis and every part (id, uid or slug)
-asi-dewey stpa refresh locator                                  # the report: new / changed / retired by code
-asi-dewey stpa refresh locator --apply                          # applied; notes, cs_controller, cs_signal, status kept
-asi-dewey stpa refresh locator --from <newer bundle> --apply    # against a bundle instead of a new snapshot
-asi-dewey stpa validate locator
-asi-dewey stpa link locator --structure wheel_loader            # cs_controller / cs_signal proposed by name
-asi-dewey stpa link locator --structure wheel_loader --apply    # the exact matches written
-asi-dewey stpa export locator --out exports                     # <out>/locator.xlsx, locator_report.md, locator_trace.png
-asi-dewey stpa export locator --out exports --all               # xlsx, md, docx, pdf, svg, png
-asi-dewey stpa delete locator --cascade
-asi-dewey update stpa_uca 14 --set cs_signal=CA-07 --set note="see the review of 10-29"
-```
-
-`refresh` reads the page again (a new snapshot through Hopper into `evidence_dir`, or the bundle
-`--from` names) and compares it to the stored objects by code (a scenario by its row): `new`,
-`changed` (the page fields that differ, before and after), `retired` (gone from the page, or now
-struck) and `removed` (a loss or a constraint gone). Without `--apply` it is a report and writes
-nothing; with it the page fields are written, every object's `cite` moves to the new version, the
-analysis's `source_*` move with it, and every Dewey-side field (`note`, `cs_controller`,
-`cs_signal`, `status`) is kept; one audit entry per object changed plus `stpa.refresh` with the
-counts. `validate` reports dangling codes, UCAs without a scenario, constraints only referenced,
-UCAs with the same text, a scenario without a UCA, and, when a structure is linked, UCAs naming a
-controller the structure does not have. `link --structure` matches a UCA's controller text to the
-structure's controller names and keys and its control action to the names of the signals leaving
-that controller, case-insensitively; exact matches are written with `--apply`, partial ones are
-reported with their candidates and never written.
-
-**Views.** The six sheets are in the workbook with every other entity; `stpa export` writes a
-workbook of one analysis. The `stpa_report` document (Gutenberg, `--param analysis=<slug>`): the
-source, the losses, the hazards, the UCAs by controller and category, the scenarios, the
-constraints with the rows that name them, the trace diagram, every object with its citation, and
-the page's review comments as an appendix when the analysis came from a bundle (no author is named).
-The `stpa_trace` diagram (Escher): hazards, UCAs, scenarios and constraints as four columns with the
-edges the page states, a retired UCA tinted, a duplicate a dashed edge; a swimlane per controller
-of the linked structure once the UCAs are linked, with lanes for the hazards and the constraints.
-
-**The screen.** *STPA analyses* in the navigation: the analyses with their counts, the parts of the
-selected one as tabs (read-only tables; the generic verbs edit them), New from… (the builders),
-Validate, Link structure…, Export…, Delete, and **Refresh from Confluence**, which runs the report
-on a worker thread (Confluence is seconds away), shows it in the Report tab and asks before
-`--apply` runs on the Tk thread.
-
-**Nothing real in the repository.** The tests read a synthetic STPA page with neutral names
-(`tests/fixtures/conveyor-gate-stpa.md`, the exact Markdown shape the server renders) and a
-synthetic bundle built around it; asi_hopper's own Confluence fixtures are synthetic too. The one
-run against the real page happens on the owner's machine and is recorded in the CHANGELOG as counts.
+The shape of the thirteen tables is frozen in `src/asi_dewey/handover.py` (`TABLES`: entity, table, sheet,
+fields and their kinds exactly as 0.10.1 declared them), so the handover keeps working on an old database
+whatever Dewey's registry becomes. `tests/test_handover.py` checks the files against that shape on a
+synthetic 0.10.1 database and, when asi_kletz is checked out beside this repo, loads them into the sister
+tool itself and compares the counts; that last test is skipped elsewhere.
 
 ## Layout
 
@@ -893,27 +724,22 @@ src/asi_dewey/
   brain.py            Brain: wires everything, the in-process API, dewey.toml loading
   locks.py            the family lock: one primary tool at a time, $ASI_PRIMARY_LOCK_DIR
   prefs.py            per-person preferences (the latched theme) in prefs.json, $ASI_DEWEY_PREFS
-  schema/             FieldSpec, EntitySchema, lookups, registry, definitions (the 22 entities)
+  schema/             FieldSpec, EntitySchema, lookups, registry, definitions (the 9 entities)
   models/             ModelFactory (dataclasses from schemas)
   storage/            Storage interface, SQLite backend, migrations, audit log, StorageFactory
   repositories/       SqlRepository, RepositoryFactory
-  services/           EntityService (validated CRUD), TransferService (dump/load/export/import), shared queries,
-                      control_structure_service.py (the rules of the seven entities, the structure-level operations),
-                      stpa_service.py (the rules of the six STPA entities; refresh, validate, link)
-  stpa/               ControlStructureFactory (builders, to_diagram, export through asi_escher), drawio_reader.py,
-                      StpaFactory (stpa_factory.py: the builders and the export) and confluence_reader.py
+  services/           EntityService (validated CRUD), TransferService (dump/load/export/import), shared queries
+  handover.py         the thirteen tables of 0.9.0 to 0.10.1, their shape frozen, written out for asi_kletz (`handover`)
   commands/           Result, Command, CommandFactory, Dispatcher, built-in verbs
   io/                 JSON and Excel exporters and importers behind factories
   generate/           DiagramFactory, DocumentFactory, Spec/Param, the diagram and document catalogs, figures.py
   automation/         CLI (with forwarding), EventBus (seq), script runner, server.py (the loopback automation
                       server a window owns) and session.py (the session file the CLI reads to find it)
-  gui/                tkinter: MainWindow, ScreenFactory, WidgetFactory, the entity, dashboard, control-structure,
-                      STPA-analyses, transfer and generate screens, background.py (BackgroundFetch: work off the
-                      Tk thread), theme.py (ThemeFactory, GridTheme) and palettes.py (the family palette)
+  gui/                tkinter: MainWindow, ScreenFactory, WidgetFactory, the entity, dashboard, transfer and generate
+                      screens, theme.py (ThemeFactory, GridTheme) and palettes.py (the family palette)
 tests/                pytest suite (schema, core, transfer, generate, jira, locks, CLI, GUI, theme, server, session,
-                      control structures, STPA); fixtures/dewey-0.7.4.db, dewey-0.8.4.db and dewey-0.9.0.db, small
-                      databases of those versions for the migration tests; fixtures/conveyor-gate-stpa.md, the
-                      synthetic STPA page
+                      handover); fixtures/dewey-0.7.4.db, dewey-0.8.4.db and dewey-0.10.1.db, small synthetic
+                      databases of those versions for the migration and handover tests
 ```
 
 ## Tests
@@ -936,26 +762,16 @@ make their requests from a helper thread while pumping `window.update()`.
 
 The files, one per layer: `test_schema.py`, `test_core.py`, `test_transfer.py`, `test_generate.py`,
 `test_jira.py` (asi_hopper's replay fixtures; skipped when the sibling is not checked out),
-`test_locks.py`, `test_cli.py`, `test_gui.py`, `test_theme.py`, `test_server.py`, `test_session.py`,
-`test_control_structures.py`, `test_control_structure_screen.py` and `test_stpa.py`; `conftest.py`
-holds the isolation fixture and the
-`brain`, `seeded` and `hold` fixtures. `test_core.py` opens a copy of `tests/fixtures/dewey-0.7.4.db`
-(never the file itself) to check that a 0.7.x database opens as 0.8.0 with every row stamped and
-nothing else changed; `test_control_structures.py` does the same with `dewey-0.8.4.db` for the seven
-tables of 0.9.0, and `test_stpa.py` with `dewey-0.9.0.db` for the six tables of 0.10.0. The STPA
-tests read a synthetic page (`tests/fixtures/conveyor-gate-stpa.md`) through a synthetic Hopper
-bundle written in a temporary folder; one test runs `from_confluence` on asi_hopper's replay
-fixtures (skipped when the sibling is not checked out); the screen test runs the refresh on its
-worker thread while pumping `window.update()`. `$ASI_DEWEY_EVIDENCE` is unset for every test, so
-bundles go beside the per-test database. The control-structure tests run escher's OCR gate monkeypatched to "competent", so they pass
-on CI without the engine; one test runs the real engine on the synthetic structure and is skipped
-where the engine is absent; one local-only test loads the private datasets when they are beside the
-repo and asserts counts and files, never text. `$ASI_DEWEY_CONTROL_STRUCTURES` is pointed at an
-absent folder for every test, so no test finds the private shelf by accident.
-`test_control_structure_screen.py` drives the Control structures screen with the window withdrawn:
-escher's `build` is monkeypatched to write stub files with a competent OCR report, and the two
-background fetches (the preview and the export) are pumped with `window.update()` until their poll
-applies the Result; one test exports through the real escher (no OCR) and imports the file back.
+`test_locks.py`, `test_cli.py`, `test_gui.py`, `test_theme.py`, `test_server.py`, `test_session.py` and
+`test_handover.py`; `conftest.py` holds the isolation fixture and the `brain`, `seeded` and `hold`
+fixtures. `test_core.py` opens a copy of `tests/fixtures/dewey-0.7.4.db` (never the file itself) to check
+that a 0.7.x database opens as 0.8.0 with every row stamped and nothing else changed, a copy of
+`dewey-0.8.4.db` to check that none of the thirteen tables of 0.9.0 to 0.10.1 is created any more, and a
+copy of `dewey-0.10.1.db` (a synthetic schema-4 database: three control structures, one STPA analysis
+read from a synthetic page and linked to one of them, every name invented) to check that 0.11.0 leaves
+the thirteen tables exactly as they were. `test_handover.py` writes the handover of that database and
+checks every file against the frozen shape; its last test runs `asi-kletz` from the sibling checkout
+(`../asi_kletz/.venv`) on the files and compares the counts, and is skipped where the sibling is absent.
 
 ## Adding an entity
 
